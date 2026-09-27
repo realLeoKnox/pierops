@@ -65,4 +65,4 @@ Agent 的上游自动更新默认关闭，避免把本项目二进制替换为�
 
 - 已集成上游 Hub、Agent，并提供按固定版本获取 Web UI 的构建入口及 Hub Docker 运行入口。
 - 待实现：统一授权决策、按节点能力开关与访问策略、结构化审计、Docker 只读适配器。
-- 先从 [架构与边界](docs/ARCHITECTURE.md) 开始开发；方案与分期见上一层目录的 `堡垒系统-技术方案与实施计划.md`。
+- 开发时先阅读 [架构与边界](docs/ARCHITECTURE.md) 和 [阶段计划](docs/ROADMAP.md)。
