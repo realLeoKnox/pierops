@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1.7
+FROM node:22-alpine AS frontend-build
+RUN apk add --no-cache git zstd
+WORKDIR /src
+COPY scripts/ ./scripts/
+RUN ./scripts/build-frontend.sh
+
+FROM golang:1.25-alpine AS hub-build
+RUN apk add --no-cache build-base
+WORKDIR /src/hub
+COPY hub/go.mod hub/go.sum ./
+RUN go mod download
+COPY hub/ ./
+COPY --from=frontend-build /src/hub/web/public/defaultTheme/ ./web/public/defaultTheme/
+RUN CGO_ENABLED=1 GOWORK=off go build -trimpath -o /out/pierops-hub .
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -S pierops && adduser -S -G pierops -h /app pierops && \
+    mkdir -p /app/data /app/cache && chown -R pierops:pierops /app
+WORKDIR /app
+COPY --from=hub-build --chown=pierops:pierops /out/pierops-hub /app/pierops-hub
+ENV GIN_MODE=release \
+    KOMARI_LISTEN=0.0.0.0:25774 \
+    GODEBUG=disablethp=1
+USER pierops
+EXPOSE 25774
+VOLUME ["/app/data"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:25774/ping || exit 1
+ENTRYPOINT ["/app/pierops-hub", "server"]
+

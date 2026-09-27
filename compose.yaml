@@ -1,0 +1,20 @@
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile.hub
+    image: pierops-hub:dev
+    restart: unless-stopped
+    ports:
+      - "${PIEROPS_BIND_HOST:-127.0.0.1}:${PIEROPS_PORT:-25774}:25774"
+    volumes:
+      - pierops-data:/app/data
+    environment:
+      GIN_MODE: release
+      KOMARI_LISTEN: 0.0.0.0:25774
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pierops-data:
+
