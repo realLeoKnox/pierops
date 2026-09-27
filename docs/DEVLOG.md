@@ -54,3 +54,11 @@
 ### 公开历史更正
 
 001–005 条中的旧提交号属于本地搭建历史，其中曾收录 Web UI 快照；该历史仅保存在本机忽略目录 `.local/backups/` 的 Git 备份中，不作为公开分支发布。公开分支从经过清理的当前文件重新建立，001–005 的开发过程继续由本日志记录。
+
+## 2026-09-27 · 007 · 发布公开 GitHub 仓库
+
+- **目标：** 发布可供用户在 VPS 上拉取并构建的 PierOps 源码。
+- **改动：** 在 `realLeoKnox` 账号下建立公开仓库 `pierops`，将清理后的本地 `main` 推送到 `origin/main`；本地远端设为 `https://github.com/realLeoKnox/pierops.git`。
+- **验证：** GitHub 仓库元数据返回 `visibility=public`、默认分支 `main`；`git ls-remote --heads origin main` 与本地提交 `c17536f5f22c359f7742b65362220f2058b44a20` 一致。推送前后 `make check-public` 对当前跟踪树及可达提交通过，工作区干净。
+- **边界：** 本次只发布源码，没有发布容器镜像或部署到真实 VPS；Web UI 上游源码未纳入仓库，带前端镜像的公开分发授权仍需确认。用户的上线验证结果待记录。
+- **对应提交：** 本次提交。
