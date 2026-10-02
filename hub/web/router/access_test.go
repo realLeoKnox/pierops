@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/komari-monitor/komari/cmd/flags"
+	"github.com/komari-monitor/komari/database/accounts"
 	"github.com/komari-monitor/komari/database/dbcore"
 	"github.com/komari-monitor/komari/database/models"
 	"github.com/komari-monitor/komari/internal/access"
@@ -55,22 +56,27 @@ func operationRouter(t *testing.T) *gin.Engine {
 	return r
 }
 
-func operatorRequest(r http.Handler, method, path string, body any) *httptest.ResponseRecorder {
+func roleRequest(r http.Handler, role, method, path string, body any) *httptest.ResponseRecorder {
 	var data []byte
 	if body != nil {
 		data, _ = json.Marshal(body)
 	}
 	req := httptest.NewRequest(method, path, bytes.NewReader(data))
-	req.AddCookie(&http.Cookie{Name: "session_token", Value: "test-session-operator"})
+	req.AddCookie(&http.Cookie{Name: "session_token", Value: "test-session-" + role})
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	return w
 }
 
+func operatorRequest(r http.Handler, method, path string, body any) *httptest.ResponseRecorder {
+	return roleRequest(r, access.Operator, method, path, body)
+}
+
 func TestPierOpsRESTAndRPCScope(t *testing.T) {
 	r := operationRouter(t)
 	for _, p := range []struct{ method, path string }{
+		{"GET", "/api/admin/access/ui"}, {"GET", "/api/admin/access/ui.js"},
 		{"GET", "/api/admin/client/node-b"}, {"GET", "/api/admin/client/node-a/token"},
 		{"GET", "/api/admin/client/node-b/terminal"}, {"POST", "/api/admin/client/node-a/file/upload"},
 		{"GET", "/api/admin/client/node-b/file/download?path=/test-only"}, {"GET", "/api/admin/settings/"},
@@ -114,6 +120,38 @@ func TestPierOpsRESTAndRPCScope(t *testing.T) {
 		if w.Code != http.StatusUnauthorized {
 			t.Fatal("User entered an Agent-only endpoint")
 		}
+	}
+}
+
+func TestPierOpsOwnerManagementFlow(t *testing.T) {
+	r := operationRouter(t)
+	w := roleRequest(r, access.Owner, "GET", "/api/admin/access/ui", nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "账户与节点授权") || !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+		t.Fatal("Owner management page missing or unprotected")
+	}
+	password := "test-only-long-password"
+	w = roleRequest(r, access.Owner, "POST", "/api/admin/access/users", map[string]any{"username": "new-viewer", "password": password, "role": access.Viewer, "grants": []access.Grant{{ClientUUID: "node-a", Action: access.FileRead}}})
+	var response struct {
+		Data struct {
+			UUID string `json:"uuid"`
+		} `json:"data"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &response) != nil || response.Data.UUID == "" {
+		t.Fatal("Cannot create restricted user through REST")
+	}
+	if id, ok := accounts.CheckPassword("new-viewer", password); !ok || id != response.Data.UUID {
+		t.Fatal("New bcrypt user cannot authenticate")
+	}
+	w = roleRequest(r, access.Owner, "PUT", "/api/admin/access/users/"+response.Data.UUID, map[string]any{"role": access.Disabled, "grants": []access.Grant{}})
+	if w.Code != 200 {
+		t.Fatal("Cannot disable restricted user")
+	}
+	if _, ok := accounts.CheckPassword("new-viewer", password); ok {
+		t.Fatal("Disabled user can authenticate")
+	}
+	w = roleRequest(r, access.Owner, "GET", "/api/admin/access/users", nil)
+	if strings.Contains(w.Body.String(), "passwd") || strings.Contains(w.Body.String(), password) || strings.Contains(w.Body.String(), "$2a$") {
+		t.Fatal("User list exposed credentials")
 	}
 }
 

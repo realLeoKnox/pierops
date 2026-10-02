@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>账户授权 · PierOps</title>
+  <style>
+    :root { color-scheme: light dark; font: 15px/1.6 system-ui, sans-serif; --bg:#f3f5f8; --panel:#fff; --text:#172333; --muted:#536273; --border:#d8e0ea; --accent:#1459a9; }
+    * { box-sizing: border-box; } body { margin:0; background:var(--bg); color:var(--text); }
+    main { max-width:1120px; margin:auto; padding:28px 20px 60px; } header { display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    h1 { margin:0; font-size:26px; } h2 { margin:0 0 16px; font-size:19px; } p { color:var(--muted); }
+    a { color:var(--accent); } section { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:22px; margin:22px 0; }
+    .fields { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; margin:18px 0; }
+    label { display:block; } input:not([type=checkbox]),select { width:100%; padding:10px; margin-top:6px; border:1px solid var(--border); border-radius:6px; color:var(--text); background:var(--panel); font:inherit; }
+    input[type=checkbox] { width:19px; height:19px; accent-color:var(--accent); } button { padding:10px 18px; border:1px solid var(--border); border-radius:7px; background:var(--panel); color:var(--text); font:inherit; cursor:pointer; }
+    button.primary { background:var(--accent); color:#fff; border-color:var(--accent); } button:disabled { opacity:.55; cursor:wait; }
+    .toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; } .toolbar label { max-width:190px; }
+    .scroll { overflow:auto; } table { border-collapse:collapse; width:100%; text-align:left; } th,td { border-bottom:1px solid var(--border); padding:12px 10px; white-space:nowrap; } th { font-weight:600; color:var(--muted); }
+    td:first-child { white-space:normal; min-width:160px; } td label { text-align:center; } small { display:block; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+    #message { min-height:26px; margin-top:12px; } .hint { color:var(--muted); font-size:14px; } .error { color:#b62132; } #ownerHint { border-left:3px solid var(--accent); padding:10px; }
+    @media (max-width:700px) { main { padding:18px 12px; } header { align-items:flex-start; } section { padding:16px; } .fields { grid-template-columns:1fr; } h1 { font-size:22px; } }
+    @media (prefers-color-scheme:dark) { :root { --bg:#111a26; --panel:#192535; --text:#e6edf5; --muted:#a9b8cb; --border:#334457; --accent:#478bd5; } }
+  </style>
+  <script src="/api/admin/access/ui.js" defer></script>
+</head>
+<body>
+<main>
+  <header><div><small>栈桥 · PierOps</small><h1>账户与节点授权</h1></div><a href="/admin/dashboard">返回控制台</a></header>
+  <p>为运维账户分配可访问的节点和动作。未勾选的动作将被拒绝，保存会替换该账户的完整授权。</p>
+  <section aria-labelledby="policyTitle">
+    <h2 id="policyTitle">账户策略</h2>
+    <label>选择账户<select id="user"><option value="">新建受限账户</option></select></label>
+    <p id="ownerHint" hidden>owner 拥有平台和全部节点的管理权限，不能通过此页面修改。</p>
+    <form id="policyForm">
+      <div class="fields">
+        <label>用户名<input id="username" autocomplete="off" maxlength="50" required></label>
+        <label id="passwordField">初始密码<input id="password" type="password" autocomplete="new-password" minlength="12" maxlength="72"><small>12–72 字节</small></label>
+        <label>角色<select id="role"><option value="viewer">viewer · 查看</option><option value="operator">operator · 运维</option><option value="disabled">disabled · 停用</option></select></label>
+      </div>
+      <div class="scroll"><table id="scope"><thead></thead><tbody></tbody></table></div>
+      <p class="hint">停用账户会撤销登录会话。撤销终端权限后，已有会话会在下一次输入或五秒内断开。</p>
+      <div class="toolbar"><button class="primary" id="save" type="submit">创建账户</button><label>二次验证码（如已启用）<input id="otp" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label><button id="reload" type="button">刷新</button></div>
+    </form>
+    <div id="message" role="status" aria-live="polite"></div>
+  </section>
+  <section aria-labelledby="auditTitle"><h2 id="auditTitle">最近的授权审计</h2><p class="hint">“已授权”表示权限检查通过，执行结果由对应的运维操作返回。</p><div class="scroll"><table id="audit"><thead><tr><th>时间</th><th>操作者</th><th>动作</th><th>节点</th><th>结果</th></tr></thead><tbody></tbody></table></div></section>
+</main>
+</body>
+</html>

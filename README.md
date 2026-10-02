@@ -65,5 +65,6 @@ Agent 的上游自动更新默认关闭，避免把本项目二进制替换为�
 
 - 已集成上游 Hub、Agent，并提供按固定版本获取 Web UI 的构建入口及 Hub Docker 运行入口。
 - 已加入 M1 授权核心：账户角色、具体节点/动作授权、拒绝与策略变更审计。入口及边界见 [授权说明](docs/ACCESS.md)。
+- owner 登录后打开 `/api/admin/access/ui`，可创建受限账户、分配节点动作和查看授权审计。
 - 下一阶段：Agent 本地能力与目录约束、操作票据、Docker 只读适配器、完整会话审计。
 - 开发时先阅读 [架构与边界](docs/ARCHITECTURE.md) 和 [阶段计划](docs/ROADMAP.md)。

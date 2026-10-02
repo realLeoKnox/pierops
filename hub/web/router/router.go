@@ -10,6 +10,7 @@ import (
 	public_api "github.com/komari-monitor/komari/web/api/public"
 	"github.com/komari-monitor/komari/web/api/terminal"
 	"github.com/komari-monitor/komari/web/filemanager"
+	"github.com/komari-monitor/komari/web/platform"
 	"github.com/komari-monitor/komari/web/public"
 	jsonRpc "github.com/komari-monitor/komari/web/rpc/jsonrpc"
 )
@@ -86,6 +87,8 @@ func registerAgentRoutes(r *gin.Engine) {
 // registerAdminRoutes 管理员路由。除二进制/流类外全部经 Bind 绑定到 admin: 命名空间方法。
 func registerAdminRoutes(r *gin.Engine) {
 	g := r.Group("/api/admin", api.RequireRole(api.RoleAdmin), api.RequirePlatformAccess())
+	g.GET("/access/ui", platform.AccessPage)
+	g.GET("/access/ui.js", platform.AccessScript)
 	g.GET("/access/self", jsonRpc.Bind("admin:accessGetSelf"))
 	g.GET("/access/users", jsonRpc.Bind("admin:accessListUsers"))
 	g.POST("/access/users", api.RequireSensitive2FA(), jsonRpc.Bind("admin:accessCreateUser"))
