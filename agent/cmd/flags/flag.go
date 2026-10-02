@@ -1,6 +1,14 @@
 package flags_pkg
 
 type Config struct {
+	EnableFileRead  bool   `json:"enable_file_read" env:"AGENT_ENABLE_FILE_READ"`
+	EnableFileWrite bool   `json:"enable_file_write" env:"AGENT_ENABLE_FILE_WRITE"`
+	EnableTerminal  bool   `json:"enable_terminal" env:"AGENT_ENABLE_TERMINAL"`
+	EnableExec      bool   `json:"enable_exec" env:"AGENT_ENABLE_EXEC"`
+	FileRoots       string `json:"file_roots" env:"AGENT_FILE_ROOTS"`
+	ExecutionUser   string `json:"execution_user" env:"AGENT_EXECUTION_USER"`
+	NodeUUID        string `json:"node_uuid" env:"AGENT_NODE_UUID"`
+
 	AutoDiscoveryKey    string  `json:"auto_discovery_key" env:"AGENT_AUTO_DISCOVERY_KEY"`         // 自动发现密钥
 	DisableAutoUpdate   bool    `json:"disable_auto_update" env:"AGENT_DISABLE_AUTO_UPDATE"`       // 禁用自动更新
 	DisableWebSsh       bool    `json:"disable_web_ssh" env:"AGENT_DISABLE_WEB_SSH"`               // 禁用远程控制（web ssh 和 rce）
@@ -32,3 +40,47 @@ type Config struct {
 }
 
 var GlobalConfig = &Config{}
+
+// FileAction classifies every supported operation; unknown operations fail closed.
+func FileAction(op string) string {
+	switch op {
+	case "list", "list_roots", "stat", "search", "download_stream":
+		return "file.read"
+	case "create", "mkdir", "delete", "move", "copy", "chmod", "upload_stream", "upload_commit", "upload_cancel":
+		return "file.write"
+	default:
+		return ""
+	}
+}
+func (c *Config) Allows(action string) bool {
+	if c.DisableWebSsh {
+		return false
+	}
+	switch action {
+	case "file.read":
+		return c.EnableFileRead
+	case "file.write":
+		return c.EnableFileWrite
+	case "terminal.open":
+		return c.EnableTerminal
+	case "command.exec":
+		return c.EnableExec
+	}
+	return false
+}
+func (c *Config) Capabilities() []string {
+	out := []string{"ping", "message", "event", "startup_config", "pierops_m2"}
+	if c.Allows("command.exec") {
+		out = append(out, "exec")
+	}
+	if c.Allows("terminal.open") {
+		out = append(out, "terminal")
+	}
+	if c.Allows("file.read") || c.Allows("file.write") {
+		out = append(out, "file")
+	}
+	if !c.DisableWebSsh && !c.DisableAutoUpdate {
+		out = append(out, "switch_version")
+	}
+	return out
+}

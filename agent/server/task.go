@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/komari-monitor/komari-agent/dnsresolver"
+	"github.com/komari-monitor/komari-agent/internal/localpolicy"
 	v2 "github.com/komari-monitor/komari-agent/protocol/v2"
 	"github.com/komari-monitor/komari-agent/ws"
 	ping "github.com/prometheus-community/pro-bing"
@@ -30,11 +31,11 @@ func NewTask(task_id, command string) {
 		uploadTaskResult(task_id, "No command provided", 0, time.Now())
 		return
 	}
-	if flags.DisableWebSsh {
+	if !flags.Allows("command.exec") {
 		uploadTaskResult(task_id, "Remote control is disabled.", -1, time.Now())
 		return
 	}
-	log.Printf("Executing task %s with command: %s", task_id, command)
+	log.Printf("Executing task %s", task_id)
 	result, exitCode := runTaskCommand(command)
 	uploadTaskResult(task_id, result, exitCode, time.Now())
 }
@@ -45,6 +46,9 @@ func runTaskCommand(command string) (string, int) {
 		return err.Error(), -1
 	}
 	defer cleanup()
+	if err := localpolicy.PrepareCommand(cmd, flags.ExecutionUser); err != nil {
+		return err.Error(), -1
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

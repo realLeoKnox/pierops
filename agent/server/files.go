@@ -22,6 +22,7 @@ import (
 
 	pkg_flags "github.com/komari-monitor/komari-agent/cmd/flags"
 	"github.com/komari-monitor/komari-agent/dnsresolver"
+	"github.com/komari-monitor/komari-agent/internal/localpolicy"
 	v2 "github.com/komari-monitor/komari-agent/protocol/v2"
 )
 
@@ -56,6 +57,17 @@ type uploadChunkState struct {
 	PartCount    int64
 	TempPath     string
 	CreatedAt    time.Time
+}
+
+var fileFS *localpolicy.Files
+
+func ConfigureFileRoots(roots []string) error {
+	sandbox, err := localpolicy.NewFiles(roots)
+	if err != nil {
+		return err
+	}
+	fileFS = sandbox
+	return nil
 }
 
 var (
@@ -97,14 +109,14 @@ func runFileOperation(operation v2.FileOperation) v2.FileResult {
 }
 
 func executeFileOperation(operation v2.FileOperation) (json.RawMessage, error) {
-	if pkg_flags.GlobalConfig.DisableWebSsh {
-		return nil, errors.New("web control is disabled")
+	if !pkg_flags.GlobalConfig.Allows(pkg_flags.FileAction(operation.Op)) {
+		return nil, errors.New("file action is disabled by local policy")
 	}
 	switch operation.Op {
 	case "list":
 		return listFiles(argString(operation.Args, "path"))
 	case "list_roots":
-		return listFilesystemRoots()
+		return listAllowedRoots()
 	case "stat":
 		return statFile(argString(operation.Args, "path"))
 	case "create":
@@ -137,11 +149,11 @@ func executeFileOperation(operation v2.FileOperation) (json.RawMessage, error) {
 }
 
 func listFiles(root string) (json.RawMessage, error) {
-	if runtime.GOOS == "windows" && strings.TrimSpace(root) == "/" {
-		return listVirtualRootEntries()
+	if strings.TrimSpace(root) == "/" || strings.TrimSpace(root) == "" {
+		return listAllowedRoots()
 	}
 	root = resolveFilePath(root)
-	entries, err := os.ReadDir(root)
+	entries, err := fileFS.ReadDir(root)
 	if err != nil {
 		return nil, err
 	}
@@ -180,11 +192,11 @@ func createFile(path string) (json.RawMessage, error) {
 		return nil, errors.New("file path is required")
 	}
 	directory := filepath.Dir(path)
-	if err := os.MkdirAll(directory, 0o755); err != nil {
+	if err := fileFS.MkdirAll(directory, 0o755); err != nil {
 		return nil, err
 	}
 	mode := fs.FileMode(0o644)
-	if info, err := os.Stat(path); err == nil {
+	if info, err := fileFS.Stat(path); err == nil {
 		if info.IsDir() {
 			return nil, errors.New("cannot replace a directory with a file")
 		}
@@ -192,7 +204,7 @@ func createFile(path string) (json.RawMessage, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	temporary, err := os.CreateTemp(directory, ".komari-empty-*")
+	temporary, err := fileFS.CreateTemp(directory, ".komari-empty-*")
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +213,7 @@ func createFile(path string) (json.RawMessage, error) {
 	defer func() {
 		_ = temporary.Close()
 		if removeTemporary {
-			_ = os.Remove(temporaryName)
+			_ = fileFS.Remove(temporaryName)
 		}
 	}()
 	if err := temporary.Chmod(mode); err != nil {
@@ -210,7 +222,7 @@ func createFile(path string) (json.RawMessage, error) {
 	if err := temporary.Close(); err != nil {
 		return nil, err
 	}
-	if err := replaceFile(temporaryName, path); err != nil {
+	if err := fileFS.Rename(temporaryName, path); err != nil {
 		return nil, err
 	}
 	removeTemporary = false
@@ -230,7 +242,7 @@ func mkdir(path, modeValue string) (json.RawMessage, error) {
 		}
 		mode = fs.FileMode(parsed)
 	}
-	if err := os.MkdirAll(path, mode); err != nil {
+	if err := fileFS.MkdirAll(path, mode); err != nil {
 		return nil, err
 	}
 	return json.Marshal(map[string]any{"created": true})
@@ -246,10 +258,10 @@ func deletePath(path string) (json.RawMessage, error) {
 	if cleaned == string(filepath.Separator) || cleaned == volumeRoot {
 		return nil, errors.New("refusing to delete a filesystem root")
 	}
-	if _, err := os.Lstat(cleaned); err != nil {
+	if _, err := fileFS.Lstat(cleaned); err != nil {
 		return nil, err
 	}
-	if err := os.RemoveAll(cleaned); err != nil {
+	if err := fileFS.RemoveAll(cleaned); err != nil {
 		return nil, err
 	}
 	return json.Marshal(map[string]any{"deleted": true})
@@ -264,16 +276,16 @@ func movePath(source, destination string) (json.RawMessage, error) {
 	if pathContains(source, destination) {
 		return nil, errors.New("cannot move a path into itself")
 	}
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+	if err := fileFS.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return nil, err
 	}
-	if err := os.Rename(source, destination); err != nil {
+	if err := fileFS.Rename(source, destination); err != nil {
 		if !isCrossDeviceRename(err) {
 			return nil, err
 		}
 		// Windows and Unix both reject rename across volumes. Fall back to a
 		// copy followed by removal so moving between drive letters works too.
-		info, statErr := os.Lstat(source)
+		info, statErr := fileFS.Lstat(source)
 		if statErr != nil {
 			return nil, statErr
 		}
@@ -288,7 +300,7 @@ func movePath(source, destination string) (json.RawMessage, error) {
 		} else if copyErr := copyRegularFile(source, destination, info); copyErr != nil {
 			return nil, copyErr
 		}
-		if removeErr := os.RemoveAll(source); removeErr != nil {
+		if removeErr := fileFS.RemoveAll(source); removeErr != nil {
 			return nil, removeErr
 		}
 	}
@@ -305,7 +317,7 @@ func copyPath(source, destination string) (json.RawMessage, error) {
 	if samePath(source, destination) {
 		return nil, errors.New("source and destination are the same")
 	}
-	info, err := os.Lstat(source)
+	info, err := fileFS.Lstat(source)
 	if err != nil {
 		return nil, err
 	}
@@ -331,56 +343,56 @@ func copyPath(source, destination string) (json.RawMessage, error) {
 }
 
 func copyRegularFile(source, destination string, info os.FileInfo) error {
-	input, err := os.Open(source)
+	input, err := fileFS.Open(source)
 	if err != nil {
 		return err
 	}
 	defer input.Close()
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+	if err := fileFS.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return err
 	}
-	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
+	output, err := fileFS.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
 	if err != nil {
 		return err
 	}
 	if _, err = io.Copy(output, input); err != nil {
 		_ = output.Close()
-		_ = os.Remove(destination)
+		_ = fileFS.Remove(destination)
 		return err
 	}
 	if err = output.Close(); err != nil {
-		_ = os.Remove(destination)
+		_ = fileFS.Remove(destination)
 		return err
 	}
-	if err = os.Chmod(destination, info.Mode().Perm()); err != nil {
+	if err = fileFS.Chmod(destination, info.Mode().Perm()); err != nil {
 		return err
 	}
-	return os.Chtimes(destination, info.ModTime(), info.ModTime())
+	return fileFS.Chtimes(destination, info.ModTime(), info.ModTime())
 }
 
 func copySymlink(source, destination string) error {
-	target, err := os.Readlink(source)
+	target, err := fileFS.Readlink(source)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+	if err := fileFS.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return err
 	}
-	if existing, err := os.Lstat(destination); err == nil {
+	if existing, err := fileFS.Lstat(destination); err == nil {
 		if existing.IsDir() && existing.Mode()&os.ModeSymlink == 0 {
 			return errors.New("cannot replace destination directory with a symlink")
 		}
-		if err := os.Remove(destination); err != nil {
+		if err := fileFS.Remove(destination); err != nil {
 			return err
 		}
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	return os.Symlink(target, destination)
+	return fileFS.Symlink(target, destination)
 }
 
 func copyDirectory(source, destination string) error {
-	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+	return fileFS.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -400,13 +412,13 @@ func copyDirectory(source, destination string) error {
 			return copySymlink(path, target)
 		}
 		if entry.IsDir() {
-			if err := os.MkdirAll(target, info.Mode().Perm()); err != nil {
+			if err := fileFS.MkdirAll(target, info.Mode().Perm()); err != nil {
 				return err
 			}
-			if err := os.Chmod(target, info.Mode().Perm()); err != nil {
+			if err := fileFS.Chmod(target, info.Mode().Perm()); err != nil {
 				return err
 			}
-			return os.Chtimes(target, info.ModTime(), info.ModTime())
+			return fileFS.Chtimes(target, info.ModTime(), info.ModTime())
 		}
 		return copyRegularFile(path, target, info)
 	})
@@ -432,7 +444,7 @@ func chmodPath(path, modeValue string) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(path, fs.FileMode(mode)); err != nil {
+	if err := fileFS.Chmod(path, fs.FileMode(mode)); err != nil {
 		return nil, err
 	}
 	return json.Marshal(map[string]any{"mode": fmt.Sprintf("%04o", mode)})
@@ -462,7 +474,7 @@ func chownPath(args map[string]interface{}) (json.RawMessage, error) {
 		}
 		gid = resolved
 	}
-	if err := changeOwnership(path, uid, gid); err != nil {
+	if err := fileFS.Chown(path, uid, gid); err != nil {
 		return nil, err
 	}
 	return json.Marshal(map[string]any{"uid": uid, "gid": gid})
@@ -476,8 +488,11 @@ func searchFiles(args map[string]interface{}) (json.RawMessage, error) {
 	}
 
 	var roots []string
-	if runtime.GOOS == "windows" && strings.TrimSpace(argString(args, "path")) == "/" {
-		roots = virtualRootSearchPaths()
+	if strings.TrimSpace(argString(args, "path")) == "/" || strings.TrimSpace(argString(args, "path")) == "" {
+		if fileFS == nil {
+			return nil, errors.New("allowed file roots are not configured")
+		}
+		roots = fileFS.Roots()
 	} else {
 		roots = []string{resolveFilePath(argString(args, "path"))}
 	}
@@ -485,7 +500,7 @@ func searchFiles(args map[string]interface{}) (json.RawMessage, error) {
 
 	matches := make([]searchMatch, 0)
 	searchRootFiles := func(root string) error {
-		return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		return fileFS.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 			if len(matches) >= searchResultLimit {
 				return fs.SkipAll
 			}
@@ -529,6 +544,17 @@ func uploadChunkCount(size, chunkSize int64) int64 {
 	return (size + chunkSize - 1) / chunkSize
 }
 
+func validUploadID(id string) bool {
+	if len(id) == 0 || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
 func uploadPartPathFor(targetPath, uploadID string) string {
 	target := filepath.ToSlash(targetPath)
 	name := filepath.Base(target)
@@ -542,7 +568,7 @@ func syncUploadDirectory(dir string) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
-	dirFile, err := os.Open(dir)
+	dirFile, err := fileFS.Open(dir)
 	if err != nil {
 		return err
 	}
@@ -556,7 +582,7 @@ func removeUploadFileLocked(uploadID string) error {
 		return nil
 	}
 	if state.TempPath != "" {
-		if err := os.Remove(state.TempPath); err != nil && !os.IsNotExist(err) {
+		if err := fileFS.Remove(state.TempPath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
@@ -566,8 +592,8 @@ func removeUploadFileLocked(uploadID string) error {
 
 func cancelFileUpload(args map[string]interface{}) (json.RawMessage, error) {
 	uploadID := strings.TrimSpace(argString(args, "upload_id"))
-	if uploadID == "" {
-		return nil, errors.New("upload_id is required")
+	if !validUploadID(uploadID) {
+		return nil, errors.New("invalid upload_id")
 	}
 	// Stop any Agent-side HTTP body readers before removing the temporary file.
 	// This lets an explicit cancel interrupt a slow relay instead of waiting for
@@ -605,7 +631,7 @@ func cancelFileUpload(args map[string]interface{}) (json.RawMessage, error) {
 	// file behind. Derive the deterministic path and remove only that file.
 	if targetPath != "" {
 		partPath := uploadPartPathFor(targetPath, uploadID)
-		if err := os.Remove(partPath); err != nil && !os.IsNotExist(err) {
+		if err := fileFS.Remove(partPath); err != nil && !os.IsNotExist(err) {
 			return nil, err
 		}
 	}
@@ -621,8 +647,8 @@ func commitFileUpload(args map[string]interface{}) (json.RawMessage, error) {
 	totalSize := argInt64(args, "total_size")
 	chunkSize := argInt64(args, "chunk_size")
 	chunkCount := argInt64(args, "chunk_count")
-	if uploadID == "" {
-		return nil, errors.New("upload_id is required")
+	if !validUploadID(uploadID) {
+		return nil, errors.New("invalid upload_id")
 	}
 	if path == string(filepath.Separator) || path == "." {
 		return nil, errors.New("upload path must be a file")
@@ -684,7 +710,7 @@ func commitFileUpload(args map[string]interface{}) (json.RawMessage, error) {
 		return nil, errors.New("upload part file is missing")
 	}
 
-	partInfo, err := os.Stat(partPath)
+	partInfo, err := fileFS.Stat(partPath)
 	if err != nil {
 		return nil, err
 	}
@@ -692,27 +718,27 @@ func commitFileUpload(args map[string]interface{}) (json.RawMessage, error) {
 		return nil, fmt.Errorf("upload part file is %d bytes, want %d", partInfo.Size(), totalSize)
 	}
 	if partInfo.Size() > totalSize {
-		if err := os.Truncate(partPath, totalSize); err != nil {
+		if err := fileFS.Truncate(partPath, totalSize); err != nil {
 			return nil, err
 		}
 	}
 	targetDir := filepath.Dir(path)
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+	if err := fileFS.MkdirAll(targetDir, 0o755); err != nil {
 		return nil, err
 	}
-	if info, statErr := os.Stat(path); statErr == nil {
+	if info, statErr := fileFS.Stat(path); statErr == nil {
 		if info.IsDir() {
 			return nil, errors.New("cannot replace a directory with a file")
 		}
-		if err := os.Chmod(partPath, info.Mode().Perm()); err != nil {
+		if err := fileFS.Chmod(partPath, info.Mode().Perm()); err != nil {
 			return nil, err
 		}
 	} else if !os.IsNotExist(statErr) {
 		return nil, statErr
-	} else if err := os.Chmod(partPath, 0o644); err != nil {
+	} else if err := fileFS.Chmod(partPath, 0o644); err != nil {
 		return nil, err
 	}
-	if err := replaceFile(partPath, path); err != nil {
+	if err := fileFS.Rename(partPath, path); err != nil {
 		return nil, err
 	}
 	if err := syncUploadDirectory(targetDir); err != nil {
@@ -732,9 +758,9 @@ func describeFile(path string, symlink bool) (fileInfo, error) {
 	var info os.FileInfo
 	var err error
 	if symlink {
-		info, err = os.Lstat(path)
+		info, err = fileFS.Lstat(path)
 	} else {
-		info, err = os.Stat(path)
+		info, err = fileFS.Stat(path)
 	}
 	if err != nil {
 		return fileInfo{}, err
@@ -755,9 +781,9 @@ func describeFile(path string, symlink bool) (fileInfo, error) {
 		ModifiedAt: info.ModTime().UTC(),
 	}
 	if symlink {
-		if target, linkErr := os.Readlink(path); linkErr == nil {
+		if target, linkErr := fileFS.Readlink(path); linkErr == nil {
 			item.Target = target
-			if targetInfo, statErr := os.Stat(path); statErr == nil {
+			if targetInfo, statErr := fileFS.Stat(path); statErr == nil {
 				item.IsDir = targetInfo.IsDir()
 				item.Size = targetInfo.Size()
 				item.Mode = targetInfo.Mode().String()
@@ -775,11 +801,11 @@ func describeFile(path string, symlink bool) (fileInfo, error) {
 }
 
 func matchFileContent(path, query, lowerQuery string) (searchMatch, bool) {
-	info, err := os.Stat(path)
+	info, err := fileFS.Stat(path)
 	if err != nil || info.IsDir() || info.Size() > 10*1024*1024 {
 		return searchMatch{}, false
 	}
-	file, err := os.Open(path)
+	file, err := fileFS.Open(path)
 	if err != nil {
 		return searchMatch{}, false
 	}
@@ -880,7 +906,7 @@ func virtualizeFilePath(path string) string {
 }
 
 func isSymlink(path string) bool {
-	info, err := os.Lstat(path)
+	info, err := fileFS.Lstat(path)
 	return err == nil && info.Mode()&os.ModeSymlink != 0
 }
 
@@ -940,8 +966,8 @@ func parseMode(value string) (uint32, error) {
 		return 0, errors.New("mode is required")
 	}
 	parsed, err := strconv.ParseUint(strings.TrimPrefix(value, "0o"), 8, 32)
-	if err != nil {
-		return 0, fmt.Errorf("invalid octal mode: %s", value)
+	if err != nil || parsed > 0o777 {
+		return 0, fmt.Errorf("invalid octal mode (expected 0000–0777): %s", value)
 	}
 	return uint32(parsed), nil
 }

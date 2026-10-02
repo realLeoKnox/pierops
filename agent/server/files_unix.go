@@ -42,7 +42,7 @@ func changeOwnership(path string, uid, gid int) error {
 }
 
 func replaceFile(source, destination string) error {
-	return os.Rename(source, destination)
+	return fileFS.Rename(source, destination)
 }
 
 func fileOwnership(info os.FileInfo) (uid, gid int, owner, group string) {

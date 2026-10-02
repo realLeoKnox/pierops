@@ -182,13 +182,7 @@ func runV2PullLoop(ctx context.Context, onRestartRequired func()) {
 		}
 		pullID := fmt.Sprintf("pull-%d", time.Now().UnixNano())
 		ackIDs := snapshotV2AckEventIDs()
-		capabilities := []string{"ping", "message", "event", "startup_config"}
-		if !flags.DisableWebSsh {
-			capabilities = append(capabilities, "exec", "terminal", "file")
-			if !flags.DisableAutoUpdate {
-				capabilities = append(capabilities, "switch_version")
-			}
-		}
+		capabilities := flags.Capabilities()
 		payload := v2.NewRequest(pullID, v2.MethodAgentPull, map[string]interface{}{
 			"capabilities":  capabilities,
 			"ack_event_ids": ackIDs,
@@ -446,6 +440,10 @@ func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventI
 
 // establishTerminalConnection 建立终端连接并使用terminal包处理终端操作
 func establishTerminalConnection(token, id, endpoint string) {
+	if !flags.Allows("terminal.open") {
+		log.Print("terminal disabled by local policy")
+		return
+	}
 	endpoint = strings.TrimSuffix(endpoint, "/") + "/api/clients/terminal?token=" + token + "&id=" + id
 	endpoint = "ws" + strings.TrimPrefix(endpoint, "http")
 

@@ -88,7 +88,7 @@ func sendDownloadStream(args map[string]interface{}) (json.RawMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("download_stream: build transfer URL: %w", err)
 	}
-	info, err := os.Stat(path)
+	info, err := fileFS.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("download_stream: stat %q: %w", path, err)
 	}
@@ -107,7 +107,7 @@ func sendDownloadStream(args map[string]interface{}) (json.RawMessage, error) {
 		}
 	}
 
-	file, err := os.Open(path)
+	file, err := fileFS.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("download_stream: open %q: %w", path, err)
 	}
@@ -345,8 +345,8 @@ func parseUploadStreamSpec(args map[string]interface{}) (uploadStreamSpec, error
 	if spec.ChunkSize == 0 {
 		spec.ChunkSize = defaultTransferChunkSize
 	}
-	if spec.UploadID == "" {
-		return uploadStreamSpec{}, errors.New("upload_id is required")
+	if !validUploadID(spec.UploadID) {
+		return uploadStreamSpec{}, errors.New("invalid upload_id")
 	}
 	if spec.Path == string(filepath.Separator) || spec.Path == "." {
 		return uploadStreamSpec{}, errors.New("upload path must be a file")
@@ -403,7 +403,7 @@ func writeUploadStreamChunk(spec uploadStreamSpec, source io.Reader) (json.RawMe
 				Parts:        make(map[int64]struct{}),
 			}
 			partPath := uploadPartPathFor(spec.Path, spec.UploadID)
-			file, openErr := os.OpenFile(partPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+			file, openErr := fileFS.OpenFile(partPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 			if openErr != nil {
 				uploadChunksMu.Unlock()
 				return nil, openErr
@@ -442,7 +442,7 @@ func writeUploadStreamChunk(spec uploadStreamSpec, source io.Reader) (json.RawMe
 	}
 	uploadChunksMu.Unlock()
 
-	file, err := os.OpenFile(partPath, os.O_WRONLY|os.O_CREATE, 0o600)
+	file, err := fileFS.OpenFile(partPath, os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err
 	}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/komari-monitor/komari-agent/internal/localpolicy"
 )
 
 // newTerminalImpl 创建一个新的终端实例。
@@ -20,7 +21,7 @@ import (
 func newTerminalImpl() (*terminalImpl, error) {
 	shell := ""
 	// 从 /etc/passwd 获取用户默认 shell
-	userHomeDir, err := os.UserHomeDir() // 获取当前用户的主目录
+	userHomeDir, err := localpolicy.ExecutionHome(flags.ExecutionUser) // 获取当前用户的主目录
 	if err == nil {
 		passwdContent, err := os.ReadFile("/etc/passwd")
 		if err == nil {
@@ -73,6 +74,9 @@ func newTerminalImpl() (*terminalImpl, error) {
 		"LC_ALL=C.UTF-8",      // 强制所有本地化变量为 UTF-8
 	)
 
+	if err := localpolicy.PrepareCommand(cmd, flags.ExecutionUser); err != nil {
+		return nil, err
+	}
 	tty, err := pty.Start(cmd)
 	if err != nil {
 		// 回退到原始启动逻辑（直接启动 shell，再无参数）
@@ -82,6 +86,9 @@ func newTerminalImpl() (*terminalImpl, error) {
 			"LANG=C.UTF-8",
 			"LC_ALL=C.UTF-8",
 		)
+		if err := localpolicy.PrepareCommand(cmd, flags.ExecutionUser); err != nil {
+			return nil, err
+		}
 		tty, err = pty.Start(cmd)
 		if err != nil {
 			return nil, fmt.Errorf("failed to start pty with argv0 prelude and plain shell: %v", err)

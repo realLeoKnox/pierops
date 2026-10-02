@@ -58,6 +58,8 @@ func uploadBasicInfo() error {
 		"gpu_name":           monitoring.GpuName(),
 		"virtualization":     monitoring.Virtualized(),
 		"version":            update.CurrentVersion,
+		"pierops_policy":     2,
+		"capabilities":       flags.Capabilities(),
 	}
 
 	return tryUploadData(data)

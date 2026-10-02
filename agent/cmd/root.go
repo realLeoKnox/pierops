@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/komari-monitor/komari-agent/dnsresolver"
+	"github.com/komari-monitor/komari-agent/internal/localpolicy"
 	"github.com/komari-monitor/komari-agent/monitoring/netstatic"
 	monitoring "github.com/komari-monitor/komari-agent/monitoring/unit"
 	"github.com/komari-monitor/komari-agent/server"
@@ -51,6 +52,19 @@ var RootCmd = &cobra.Command{
 		}
 		if flags.PreferIPVersion != "" && flags.PreferIPVersion != "4" && flags.PreferIPVersion != "6" {
 			return fmt.Errorf("invalid --prefer-ip-version value %q: expected 4 or 6", flags.PreferIPVersion)
+		}
+		if flags.EnableFileRead || flags.EnableFileWrite {
+			if strings.TrimSpace(flags.FileRoots) == "" {
+				return fmt.Errorf("file capabilities require --file-roots")
+			}
+		}
+		if err := server.ConfigureFileRoots(splitFileRoots(flags.FileRoots)); err != nil {
+			return err
+		}
+		if flags.EnableTerminal || flags.EnableExec {
+			if err := localpolicy.ValidateExecutionUser(flags.ExecutionUser); err != nil {
+				return err
+			}
 		}
 		// 捕获中止信号，优雅退出
 		stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -166,6 +180,13 @@ func init() {
 	//RootCmd.MarkPersistentFlagRequired("endpoint")
 	RootCmd.PersistentFlags().StringVar(&flags.AutoDiscoveryKey, "auto-discovery", "", "Auto discovery key for the agent")
 	RootCmd.PersistentFlags().BoolVar(&flags.DisableAutoUpdate, "disable-auto-update", true, "Disable upstream automatic updates")
+	RootCmd.PersistentFlags().BoolVar(&flags.EnableFileRead, "enable-file-read", false, "Allow remote reads inside configured roots")
+	RootCmd.PersistentFlags().BoolVar(&flags.EnableFileWrite, "enable-file-write", false, "Allow remote writes inside configured roots")
+	RootCmd.PersistentFlags().BoolVar(&flags.EnableTerminal, "enable-terminal", false, "Allow remote terminal as execution-user")
+	RootCmd.PersistentFlags().BoolVar(&flags.EnableExec, "enable-exec", false, "Allow remote commands as execution-user")
+	RootCmd.PersistentFlags().StringVar(&flags.FileRoots, "file-roots", "", "Semicolon-separated allowed absolute directories")
+	RootCmd.PersistentFlags().StringVar(&flags.ExecutionUser, "execution-user", "", "Non-root local user for commands and terminals")
+	RootCmd.PersistentFlags().StringVar(&flags.NodeUUID, "node-uuid", "", "Hub node UUID bound to operation tickets")
 	RootCmd.PersistentFlags().BoolVar(&flags.DisableWebSsh, "disable-web-ssh", false, "Disable remote control(web ssh and rce)")
 	//RootCmd.PersistentFlags().BoolVar(&flags.MemoryModeAvailable, "memory-mode-available", false, "[deprecated]Report memory as available instead of used.")
 	RootCmd.PersistentFlags().Float64VarP(&flags.Interval, "interval", "i", 3.0, "Interval in seconds")
@@ -220,8 +241,8 @@ func loadFromEnv() {
 		case reflect.String:
 			field.SetString(envValue)
 		case reflect.Bool:
-			if strings.ToLower(envValue) == "true" || envValue == "1" {
-				field.SetBool(true)
+			if value, err := strconv.ParseBool(envValue); err == nil {
+				field.SetBool(value)
 			}
 		case reflect.Int:
 			if intVal, err := strconv.Atoi(envValue); err == nil {
@@ -233,4 +254,14 @@ func loadFromEnv() {
 			}
 		}
 	}
+}
+
+func splitFileRoots(value string) []string {
+	var roots []string
+	for _, root := range strings.Split(value, ";") {
+		if root = strings.TrimSpace(root); root != "" {
+			roots = append(roots, root)
+		}
+	}
+	return roots
 }

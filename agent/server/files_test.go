@@ -100,10 +100,10 @@ func TestListFilesResolvesSymlinkTargetKind(t *testing.T) {
 	if err := os.WriteFile(targetFile, []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(targetDir, filepath.Join(root, "dir-link")); err != nil {
+	if err := os.Symlink("target-dir", filepath.Join(root, "dir-link")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	if err := os.Symlink(targetFile, filepath.Join(root, "file-link")); err != nil {
+	if err := os.Symlink("target-file.txt", filepath.Join(root, "file-link")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
@@ -126,7 +126,7 @@ func TestListFilesResolvesSymlinkTargetKind(t *testing.T) {
 	if kinds["file-link"] {
 		t.Fatal("file symlink was reported as a directory")
 	}
-	if targets["dir-link"] != targetDir || targets["file-link"] != targetFile {
+	if targets["dir-link"] != "target-dir" || targets["file-link"] != "target-file.txt" {
 		t.Fatalf("unexpected symlink targets: %+v", targets)
 	}
 

@@ -68,3 +68,5 @@ Agent 的上游自动更新默认关闭，避免把本项目二进制替换为�
 - owner 登录后打开 `/api/admin/access/ui`，可创建受限账户、分配节点动作和查看授权审计。
 - 下一阶段：Agent 本地能力与目录约束、操作票据、Docker 只读适配器、完整会话审计。
 - 开发时先阅读 [架构与边界](docs/ARCHITECTURE.md) 和 [阶段计划](docs/ROADMAP.md)。
+
+Agent 本地配置与边界见 [M2 Agent 策略](docs/AGENT-POLICY.md)。
