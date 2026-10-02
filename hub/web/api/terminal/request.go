@@ -61,6 +61,10 @@ func RequestTerminal(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Require WebSocket upgrade"})
 		return
 	}
+	if !agent_runtime.CanControl(uuid, access.Terminal) {
+		api.RespondError(c, http.StatusConflict, "节点尚未开启终端，或需要升级并配置 PierOps M2 Agent。")
+		return
+	}
 	conn, err := api.UpgradeSafeConn(c)
 	if err != nil {
 		return

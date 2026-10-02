@@ -237,6 +237,8 @@ func fileOperationError(err error) *rpc.JsonRpcError {
 	switch {
 	case errors.Is(err, filemanager.ErrOffline):
 		code = rpc.Unavailable
+	case errors.Is(err, filemanager.ErrLocalPolicy):
+		code = rpc.Unimplemented
 	case errors.Is(err, filemanager.ErrUnsupported):
 		code = rpc.Unimplemented
 	case errors.Is(err, filemanager.ErrTimeout), errors.Is(err, context.DeadlineExceeded):
@@ -248,9 +250,9 @@ func fileOperationError(err error) *rpc.JsonRpcError {
 	default:
 		message := strings.ToLower(err.Error())
 		switch {
-		case strings.Contains(message, "unsupported file operation"):
+		case strings.Contains(message, "unsupported file operation") || strings.Contains(message, "file action is disabled by local policy"):
 			code = rpc.Unimplemented
-		case strings.Contains(message, "permission denied") || strings.Contains(message, "operation not permitted"):
+		case strings.Contains(message, "permission denied") || strings.Contains(message, "operation not permitted") || strings.Contains(message, "outside allowed roots") || strings.Contains(message, "ticket rejected"):
 			code = rpc.PermissionDenied
 		case strings.Contains(message, "no such file") || strings.Contains(message, "cannot find") || strings.Contains(message, "not found"):
 			code = rpc.NotFound

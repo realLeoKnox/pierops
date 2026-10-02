@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: all frontend hub agent test check-public clean
+.PHONY: all frontend hub agent agent-linux test check-public clean
 
 all: frontend hub agent
 
@@ -14,6 +14,9 @@ hub: frontend
 agent:
 	mkdir -p bin
 	cd agent && GOWORK=off go build -o ../bin/pierops-agent .
+
+agent-linux:
+	./scripts/package-agent.sh
 
 test:
 	cd hub && GOWORK=off go test ./internal/access ./web/router -run 'TestPierOps|TestNodeAction|TestAPIKeyRotation|TestPolicyValidation|TestRPCScope|TestMissingAudit|TestLegacyOwner'

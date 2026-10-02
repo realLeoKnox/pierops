@@ -19,6 +19,7 @@ const defaultTimeout = 30 * time.Second
 
 var (
 	ErrOffline      = errors.New("agent is not connected")
+	ErrLocalPolicy  = agent_runtime.ErrLocalPolicy
 	ErrUnsupported  = errors.New("agent does not support file operations")
 	ErrTimeout      = errors.New("file operation timed out")
 	ErrUnknownToken = errors.New("unknown or expired file operation")

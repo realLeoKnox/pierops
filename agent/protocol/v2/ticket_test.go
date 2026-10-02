@@ -115,3 +115,26 @@ func TestTicketRestartWithClockRewind(t *testing.T) {
 		t.Fatal("old epoch replayed after clock rewind")
 	}
 }
+
+func TestTicketExpiredReplayAfterClockRewind(t *testing.T) {
+	now := time.UnixMilli(1800000000000)
+	v := NewTicketVerifier(now.Add(-time.Second))
+	sign := func(id string, at time.Time) any {
+		p, e := SignOperation("node-a", v.Epoch(), "actor", fixtureKey, MethodAgentExec, ExecParams{TaskID: id, Command: "printf ok"}, at)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return p
+	}
+	old := sign("old", now)
+	if e := v.Consume("node-a", fixtureKey, MethodAgentExec, old, now); e != nil {
+		t.Fatal(e)
+	}
+	future := now.Add(2 * time.Minute)
+	if e := v.Consume("node-a", fixtureKey, MethodAgentExec, sign("new", future), future); e != nil {
+		t.Fatal(e)
+	}
+	if e := v.Consume("node-a", fixtureKey, MethodAgentExec, old, now); e == nil {
+		t.Fatal("expired nonce reused after cache pruning and clock rewind")
+	}
+}

@@ -1,6 +1,6 @@
 # 栈桥 · PierOps
 
-Agent 主动连接 Hub 的轻量可控运维平台。当前已建立独立构建与 Docker 运行基线，正在推进 M1：Hub 的账户角色、节点动作授权与权限审计。
+Agent 主动连接 Hub 的轻量可控运维平台。已实现 Hub 授权核心及 M2 Agent 本地约束、短期操作票据；提供 Hub Docker 构建入口和 Linux Agent 开发包。真实部署验收仍待安排。
 
 ## 目录
 
@@ -59,14 +59,23 @@ PIEROPS_PORT=25785 docker compose -p pierops-test down
 AGENT_TOKEN='从 Hub 创建的节点 token' ./scripts/dev-agent.sh
 ```
 
-Agent 的上游自动更新默认关闭，避免把本项目二进制替换为原版 Agent。本地脚本还默认禁用 Web 控制能力；需要验证终端和文件流程时，显式设置 `AGENT_DISABLE_WEB_SSH=0`。需要让其他机器连接时，按部署环境设置 `PIEROPS_LISTEN` 和 `AGENT_ENDPOINT`，并使用 HTTPS/WSS。**Hub 授权核心已加入；Agent 本地约束、完整会话审计与真实部署验收仍在后续阶段。**
+Agent 禁止上游自动更新/远程版本替换；运维能力默认关闭，设置 `AGENT_DISABLE_WEB_SSH=0` 后仍需按本机策略单独开启。开启时必须填写节点 UUID；文件能力需配置允许目录，终端/命令需指定非 root 执行用户。见 [Agent 本地策略](docs/AGENT-POLICY.md)。其他机器连接需设置 `PIEROPS_LISTEN`、`AGENT_ENDPOINT` 并使用 HTTPS/WSS。完整会话审计与真实部署验收待后续完成。
 
 ## 当前状态与下一步
 
 - 已集成上游 Hub、Agent，并提供按固定版本获取 Web UI 的构建入口及 Hub Docker 运行入口。
 - 已加入 M1 授权核心：账户角色、具体节点/动作授权、拒绝与策略变更审计。入口及边界见 [授权说明](docs/ACCESS.md)。
 - owner 登录后打开 `/api/admin/access/ui`，可创建受限账户、分配节点动作和查看授权审计。
-- 下一阶段：Agent 本地能力与目录约束、操作票据、Docker 只读适配器、完整会话审计。
+- 已实现 M2：Agent 能力默认关闭、文件允许目录、非 root 执行身份、单次签名票据与断线队列重新授权。
+- 下一阶段：M3 Docker 只读适配器和节点页面；之后完善会话审计与交付。
 - 开发时先阅读 [架构与边界](docs/ARCHITECTURE.md) 和 [阶段计划](docs/ROADMAP.md)。
 
 Agent 本地配置与边界见 [M2 Agent 策略](docs/AGENT-POLICY.md)。
+
+## Linux Agent 开发包
+
+```sh
+make agent-linux
+```
+
+为 Linux amd64/arm64 交叉编译并在 `bin/releases/` 生成带源码提交标识的压缩包、占位配置、systemd 示例与 `SHA256SUMS`。打包要求 Agent 源码已提交，产物不进入 Git；没有真实凭据，也不会自动安装或启动服务。使用说明见 [Linux 包说明](packaging/agent/README.md)。本地交叉编译成功不代表已完成 Linux/VPS 运行验收。

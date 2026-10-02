@@ -1,0 +1,13 @@
+{
+  "endpoint": "https://hub.example.invalid",
+  "token": "REPLACE_ON_NODE",
+  "node_uuid": "REPLACE_WITH_HUB_NODE_UUID",
+  "disable_auto_update": true,
+  "disable_web_ssh": false,
+  "enable_file_read": true,
+  "enable_file_write": false,
+  "enable_terminal": false,
+  "enable_exec": false,
+  "file_roots": "/srv/pierops-workspace",
+  "execution_user": ""
+}

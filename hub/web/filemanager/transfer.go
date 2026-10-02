@@ -1060,6 +1060,10 @@ func respondTransferError(c *gin.Context, err error) {
 		// Preserve a proxy/body-size rejection so the browser can renegotiate
 		// the logical chunk instead of retrying the same request forever.
 		status = http.StatusRequestEntityTooLarge
+	case errors.Is(err, ErrLocalPolicy):
+		status = http.StatusConflict
+	case errors.Is(err, access.ErrDenied):
+		status = http.StatusForbidden
 	case errors.Is(err, ErrUnsupported):
 		status = http.StatusNotImplemented
 	case isUnsupportedAgentFileOperation(err):
@@ -1095,7 +1099,8 @@ func isUnsupportedAgentFileOperation(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "unsupported file operation") ||
 		strings.Contains(message, "does not support file operations") ||
-		strings.Contains(message, "web control is disabled")
+		strings.Contains(message, "web control is disabled") ||
+		strings.Contains(message, "file action is disabled by local policy")
 }
 
 func auditFileTransfer(c *gin.Context, action, clientUUID, path string) {

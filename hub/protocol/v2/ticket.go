@@ -199,6 +199,7 @@ type TicketVerifier struct {
 	mu        sync.Mutex
 	seen      map[string]int64
 	startedAt int64
+	lastNow   int64
 	epoch     string
 }
 
@@ -207,10 +208,19 @@ func NewTicketVerifier(start time.Time) *TicketVerifier {
 	if _, err := rand.Read(random[:]); err != nil {
 		panic("cannot initialize operation epoch")
 	}
-	return &TicketVerifier{epoch: hex.EncodeToString(random[:]), seen: make(map[string]int64), startedAt: start.UnixMilli()}
+	return &TicketVerifier{epoch: hex.EncodeToString(random[:]), seen: make(map[string]int64), startedAt: start.UnixMilli(), lastNow: start.UnixMilli()}
 }
 func (v *TicketVerifier) Epoch() string { return v.epoch }
 func (v *TicketVerifier) Consume(node, key, method string, params any, now time.Time) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	// Expired entries must not become reusable if the wall clock later rewinds.
+	// Once a time has been observed, verification/pruning never moves backwards.
+	if now.UnixMilli() < v.lastNow {
+		now = time.UnixMilli(v.lastNow)
+	} else {
+		v.lastNow = now.UnixMilli()
+	}
 	t, e := VerifyOperation(node, key, method, params, now, v.startedAt)
 	if e != nil {
 		return e
@@ -218,8 +228,7 @@ func (v *TicketVerifier) Consume(node, key, method string, params any, now time.
 	if t.AgentEpoch != v.epoch {
 		return errors.New("operation ticket belongs to a previous Agent process")
 	}
-	v.mu.Lock()
-	defer v.mu.Unlock()
+
 	for nonce, expires := range v.seen {
 		if expires <= now.UnixMilli() {
 			delete(v.seen, nonce)

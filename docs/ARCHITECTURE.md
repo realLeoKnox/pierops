@@ -42,3 +42,5 @@ Agent 主动通过 HTTPS/WSS 连接 Hub；Hub 不向节点发起入站连接。H
 这些目录是下一阶段的目标边界，**本次没有宣称它们已实现**。先保持已有监控功能运行，再以 Docker 只读链路验证新边界。
 
 2026-10-03 更新：`hub/internal/access` 已实现 M1 授权核心，复用在管理 REST、RPC 与终端/文件入口。结构化权限审计暂与该模块共用 `operation_audits` 表；Agent 能力、操作票据和 Docker 适配器仍待后续实现。具体行为见 [授权说明](ACCESS.md)。
+
+2026-10-03 M2 更新：本地能力由 Agent 启动配置决定；文件边界位于 `agent/internal/localpolicy`，终端/命令按指定非 root 用户执行。签名与防重放位于两端 `protocol/v2/ticket.go`，Hub 的准备/签发/队列入口位于 `hub/web/agent/operations.go`；这些是当前最小实现的实际路径。Agent 报告携带随机进程会话标识，票据绑定该标识与请求参数。旧 Agent 保留监控，运维操作要求 M2 支持。Docker 适配器与完整审计模块仍未实现。细节见 [Agent 策略](AGENT-POLICY.md)。

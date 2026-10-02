@@ -1,0 +1,22 @@
+[Unit]
+Description=PierOps Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pierops
+Group=pierops
+ExecStart=/usr/local/bin/pierops-agent --config /etc/pierops/agent.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+# Monitoring / read-only template. Enable writes only with an explicit writable
+# directory rule matching the Agent's local file_roots; review the OS policy.
+
+[Install]
+WantedBy=multi-user.target
