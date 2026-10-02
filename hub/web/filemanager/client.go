@@ -57,13 +57,17 @@ func Call(ctx context.Context, uuid, op string, args map[string]any, options ...
 	pendingMu.Unlock()
 	defer removePending(requestID)
 
-	ok := agent_runtime.DispatchV2Event(uuid, v2.MethodAgentFile, v2.FileOperation{
+	operation, err := agent_runtime.PrepareOperation(ctx, uuid, v2.MethodAgentFile, v2.FileOperation{
 		UUID:      uuid,
 		RequestID: requestID,
 		Op:        op,
 		Args:      args,
 	})
-	if !ok {
+	if err != nil {
+		return nil, err
+	}
+	defer operation.CancelQueued()
+	if !operation.Dispatch() {
 		return nil, ErrOffline
 	}
 

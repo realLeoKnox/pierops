@@ -50,8 +50,16 @@ var RootCmd = &cobra.Command{
 				return fmt.Errorf("failed to parse config file: %w", err)
 			}
 		}
+		if !flags.DisableAutoUpdate {
+			return fmt.Errorf("PierOps does not allow upstream auto-update; upgrade with a reviewed PierOps build")
+		}
 		if flags.PreferIPVersion != "" && flags.PreferIPVersion != "4" && flags.PreferIPVersion != "6" {
 			return fmt.Errorf("invalid --prefer-ip-version value %q: expected 4 or 6", flags.PreferIPVersion)
+		}
+		if flags.EnableFileRead || flags.EnableFileWrite || flags.EnableTerminal || flags.EnableExec {
+			if flags.NodeUUID == "" || len(flags.Token) < 12 {
+				return fmt.Errorf("operational capabilities require --node-uuid and a node token of at least 12 bytes")
+			}
 		}
 		if flags.EnableFileRead || flags.EnableFileWrite {
 			if strings.TrimSpace(flags.FileRoots) == "" {

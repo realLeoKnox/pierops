@@ -756,6 +756,7 @@ func PreviewDownload(c *gin.Context) {
 		api.RespondError(c, http.StatusForbidden, "Operation not permitted")
 		return
 	}
+	c.Request = c.Request.WithContext(rpc.NewContextWithMeta(c.Request.Context(), item.AuthMeta))
 	// The token is bound to the exact path. Keeping the path out of the public
 	// URL avoids nested URL encoding issues for non-ASCII filenames.
 	// Keep the public URL and response filename ASCII-only. This avoids a
@@ -1020,7 +1021,7 @@ func cancelAgentUpload(session *uploadSession) {
 	if session == nil || session.UUID == "" || session.ID == "" {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{Principal: &rpc.Principal{Type: rpc.PrincipalInternal}}), 10*time.Second)
 	defer cancel()
 	_, _ = Call(ctx, session.UUID, "upload_cancel", map[string]any{
 		"upload_id": session.ID,

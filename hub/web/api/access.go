@@ -19,10 +19,12 @@ func OperationMeta(c *gin.Context) *rpc.ContextMeta {
 }
 
 func AuthorizeOperation(c *gin.Context, action, node string) bool {
-	if access.Default().Authorize(OperationMeta(c), action, node) != nil {
+	meta := OperationMeta(c)
+	if access.Default().Authorize(meta, action, node) != nil {
 		RespondError(c, http.StatusForbidden, "Operation not permitted")
 		return false
 	}
+	c.Request = c.Request.WithContext(rpc.NewContextWithMeta(c.Request.Context(), meta))
 	return true
 }
 

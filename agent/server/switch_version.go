@@ -8,11 +8,7 @@ import (
 )
 
 func switchAgentVersion(version string, onRestartRequired func()) {
-	if flags.DisableWebSsh || flags.DisableAutoUpdate {
-		log.Print("Ignoring v2 switch version request because remote control or upstream updates are disabled")
-		return
-	}
-	runSwitchVersion(version, update.CheckAndUpdateForVersionLine, onRestartRequired)
+	log.Print("Ignoring upstream version switch: PierOps requires a reviewed local upgrade")
 }
 
 func runSwitchVersion(version string, check func(string) error, onRestartRequired func()) {

@@ -12,7 +12,7 @@ Hub 的用户授权与 Agent 的本地策略必须同时允许一项操作。Age
 | `enable_terminal` | `AGENT_ENABLE_TERMINAL` | `false` |
 | `enable_exec` | `AGENT_ENABLE_EXEC` | `false` |
 | `execution_user` | `AGENT_EXECUTION_USER` | 空；开启终端/命令必须指定已有非 root 用户 |
-| `node_uuid` | `AGENT_NODE_UUID` | 空；用于后续操作票据绑定 Hub 节点 UUID |
+| `node_uuid` | `AGENT_NODE_UUID` | 空；开启运维能力必须填写 Hub 中该节点的 UUID |
 
 配置加载沿用现有顺序：命令行默认值/参数 → 环境变量 → JSON 配置文件。能力设置只在启动时由本机加载，变更后重启 Agent；Hub 没有远程修改本地策略的入口。Agent 和 Hub 构建统一要求 Go 1.25 或更新兼容版本。
 
@@ -22,6 +22,7 @@ Hub 的用户授权与 Agent 的本地策略必须同时允许一项操作。Age
 {
   "endpoint": "https://hub.example.invalid",
   "token": "REPLACE_ON_NODE",
+  "node_uuid": "REPLACE_WITH_HUB_NODE_UUID",
   "disable_auto_update": true,
   "enable_file_read": true,
   "file_roots": "/srv/pierops-workspace",
@@ -51,6 +52,22 @@ Unix 节点必须指定非 root 执行用户。Agent 若以 root 启动，会在
 
 终端和任意命令按该用户本身的系统权限执行，**不受文件管理允许目录限制**。若执行用户拥有 sudo、Docker socket、特权组或敏感文件权限，这些权限仍然存在。M2 不提供命令容器沙箱。Windows 暂不开启受控终端/命令，监控和文件目录边界可继续使用。
 
-## 当前边界
+## 短期操作票据与重连
 
-本条开发步骤已实现能力、目录与执行身份。短期票据和 Hub 对旧 Agent 的拒绝将在下一条开发步骤接入；真实 VPS 验收按用户要求暂缓。
+Hub 在授权后签发单次票据，绑定节点 UUID、动作、方法、请求 ID、操作者和完整参数摘要，有效期 90 秒。签名采用 HMAC-SHA256，密钥为该节点已有的私有 Agent token；不新增需要分发的密钥。票据不包含 token 或原始命令/文件内容。节点 token 持有者可以自行签发该节点票据，这一机制依赖 token 的保密性，不能防御已控制 Hub 或 Agent 的攻击者；本机能力和目录检查仍独立执行。
+
+- Agent 在 WS 和 POST pull 的统一接收入口验证票据；旧 Hub 的无票据运维请求被拒绝。
+- 票据缺失、节点/动作/参数不符、过期、签名错误均拒绝；同一票据只能消费一次。未过期重放记录不因容量淘汰，达到容量时拒绝新操作。
+- Agent 重启后拒绝重启前签发的票据，要求重新发起操作。这也阻止了重启后重放，但不会自动恢复旧命令/上传任务。
+- Hub 和节点应同步系统时钟。票据允许最多 5 秒的未来时间偏差；启动时间边界不额外放宽，以保留重启后的防重放保证。
+- Hub 只对报告 `control_policy.version=2`、匹配节点 UUID 且开启对应能力的在线 Agent 派发运维操作；旧 Agent 仍可监控。
+- 断线队列保留身份元数据于内存，发送前重新检查会话、节点授权、当前 token 和本地能力声明；撤权、签名失效或过期时移除待发操作。文件调用结束/超时/取消时移除其尚未派发的队列条目。
+- 每次新 WS 连接清除旧能力声明，收到新报告后才恢复派发，避免旧 Agent 继承先前声明。
+
+这是发起操作时的票据。已经开始的命令/文件流不因票据随后过期自动停止；运行中的终端由 M1 Hub 检查权限，断线后 Agent 沿用有限会话保留窗口。结果丢失不能据此证明操作未执行，应检查目标状态后再人工发起新操作。
+
+## 升级与当前边界
+
+先升级 Hub，再升级 Agent。旧节点会继续监控，但运维入口提示需 M2 支持；在 Agent 本机填写节点 UUID、允许目录和所需能力后重启。`disable_auto_update` 必须保持 `true`；本版禁止切换回上游 Agent，升级使用人工审查的 PierOps 构建。
+
+已完成本地构建、协议票据、Agent 实际接收器及 Hub 授权/队列回归。真实 VPS、真实终端和 Linux 用户切换运行仍未验证；本轮不重建或发布 Hub Docker 镜像。受限账户完整运维界面和 M3 Docker 只读信息待继续开发。

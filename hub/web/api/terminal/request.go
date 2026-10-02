@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -14,8 +15,9 @@ import (
 	"github.com/komari-monitor/komari/web/api"
 )
 
-func dispatchTerminalRequest(uuid, id string) bool {
-	return agent_runtime.DispatchV2Event(uuid, v2.MethodAgentTerminal, v2.TerminalRequestParams{RequestID: id})
+func dispatchTerminalRequest(ctx context.Context, uuid, id string) bool {
+	operation, err := agent_runtime.PrepareOperation(ctx, uuid, v2.MethodAgentTerminal, v2.TerminalRequestParams{RequestID: id})
+	return err == nil && operation.Dispatch()
 }
 
 func RequestTerminal(c *gin.Context) {
@@ -80,7 +82,7 @@ func RequestTerminal(c *gin.Context) {
 			return nil
 		})
 		conn.WriteJSON(gin.H{"request_id": id})
-		if !dispatchTerminalRequest(uuid, id) {
+		if !dispatchTerminalRequest(c.Request.Context(), uuid, id) {
 			conn.WriteMessage(1, []byte("Client offline!\n被控端离线!\n"))
 			closeSession(id)
 			return
@@ -113,7 +115,7 @@ func RequestTerminal(c *gin.Context) {
 		return nil
 	})
 	conn.WriteJSON(gin.H{"request_id": id})
-	if !dispatchTerminalRequest(uuid, id) {
+	if !dispatchTerminalRequest(c.Request.Context(), uuid, id) {
 		conn.Close()
 		closeSession(id)
 		return

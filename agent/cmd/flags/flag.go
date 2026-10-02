@@ -1,5 +1,7 @@
 package flags_pkg
 
+import v2 "github.com/komari-monitor/komari-agent/protocol/v2"
+
 type Config struct {
 	EnableFileRead  bool   `json:"enable_file_read" env:"AGENT_ENABLE_FILE_READ"`
 	EnableFileWrite bool   `json:"enable_file_write" env:"AGENT_ENABLE_FILE_WRITE"`
@@ -42,16 +44,8 @@ type Config struct {
 var GlobalConfig = &Config{}
 
 // FileAction classifies every supported operation; unknown operations fail closed.
-func FileAction(op string) string {
-	switch op {
-	case "list", "list_roots", "stat", "search", "download_stream":
-		return "file.read"
-	case "create", "mkdir", "delete", "move", "copy", "chmod", "upload_stream", "upload_commit", "upload_cancel":
-		return "file.write"
-	default:
-		return ""
-	}
-}
+func FileAction(op string) string { return v2.FileAction(op) }
+
 func (c *Config) Allows(action string) bool {
 	if c.DisableWebSsh {
 		return false
@@ -71,16 +65,24 @@ func (c *Config) Allows(action string) bool {
 func (c *Config) Capabilities() []string {
 	out := []string{"ping", "message", "event", "startup_config", "pierops_m2"}
 	if c.Allows("command.exec") {
-		out = append(out, "exec")
+		out = append(out, "exec", "command.exec")
 	}
 	if c.Allows("terminal.open") {
-		out = append(out, "terminal")
+		out = append(out, "terminal", "terminal.open")
+	}
+	if c.Allows("file.read") {
+		out = append(out, "file.read")
+	}
+	if c.Allows("file.write") {
+		out = append(out, "file.write")
 	}
 	if c.Allows("file.read") || c.Allows("file.write") {
 		out = append(out, "file")
 	}
-	if !c.DisableWebSsh && !c.DisableAutoUpdate {
-		out = append(out, "switch_version")
-	}
+
 	return out
+}
+
+func (c *Config) RemoteControlEnabled() bool {
+	return c.Allows("file.read") || c.Allows("file.write") || c.Allows("terminal.open") || c.Allows("command.exec")
 }

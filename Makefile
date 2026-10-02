@@ -18,7 +18,7 @@ agent:
 test:
 	cd hub && GOWORK=off go test ./internal/access ./web/router -run 'TestPierOps|TestNodeAction|TestAPIKeyRotation|TestPolicyValidation|TestRPCScope|TestMissingAudit|TestLegacyOwner'
 	cd hub && GOWORK=off go test ./protocol/v2/... ./web/agent/... ./web/filemanager/...
-	cd agent && GOWORK=off go test ./internal/localpolicy ./server ./terminal -run 'TestLocal|Test(File|Create|Copy|List|Resolve|Legacy|Delete|Send|Receive|Upload|First|Commit|Cancel|RunSwitch|RunTask|BuildTask|Append|Motd)'
+	cd agent && GOWORK=off go test ./protocol/v2 ./internal/localpolicy ./server ./terminal -run 'TestTicket|TestLocal|Test(File|Create|Copy|List|Resolve|Legacy|Delete|Send|Receive|Upload|First|Commit|Cancel|RunSwitch|RunTask|BuildTask|Append|Motd)'
 
 check-public:
 	python3 scripts/check-public.py

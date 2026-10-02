@@ -2,13 +2,11 @@ package jsonrpc
 
 import (
 	"context"
-	"encoding/json"
 	"net"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/komari-monitor/komari/database/auditlog"
 	"github.com/komari-monitor/komari/database/dbcore"
 	"github.com/komari-monitor/komari/database/models"
@@ -125,24 +123,25 @@ func adminExec(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcE
 		return nil, rpc.MakeError(rpc.InvalidParams, "No clients connected", nil)
 	}
 	taskId := utils.GenerateRandomString(16)
+	prepared := make(map[string]*agent_runtime.PreparedOperation)
+	for _, uuid := range append(append([]string{}, onlineClients...), queuedClients...) {
+		operation, err := agent_runtime.PrepareOperation(ctx, uuid, v2.MethodAgentExec, v2.ExecParams{TaskID: taskId, Command: params.Command})
+		if err != nil {
+			return nil, rpc.MakeError(rpc.PermissionDenied, err.Error(), nil)
+		}
+		prepared[uuid] = operation
+	}
 	taskClients := append(append([]string{}, onlineClients...), queuedClients...)
 	taskClients = append(taskClients, offlineClients...)
 	if err := tasks.CreateTask(taskId, taskClients, params.Command); err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to create task: "+err.Error(), nil)
 	}
-	for _, uuid := range onlineClients {
-		payload, _ := json.Marshal(v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentExec, Params: v2.ExecParams{TaskID: taskId, Command: params.Command}})
-		client := agent_runtime.GetConnectedClients()[uuid]
-		if client == nil {
-			return nil, rpc.MakeError(rpc.InvalidParams, "Client connection is null: "+uuid, nil)
-		}
-		if err := client.WriteMessage(websocket.TextMessage, payload); err != nil {
-			return nil, rpc.MakeError(rpc.InvalidParams, "Client connection is broke: "+uuid, nil)
+	for _, uuid := range append(append([]string{}, onlineClients...), queuedClients...) {
+		if !prepared[uuid].Dispatch() {
+			tasks.SaveTaskResult(taskId, uuid, "Operation was not dispatched: offline or permission/local policy changed.", -1, time.Now().UTC())
 		}
 	}
-	for _, uuid := range queuedClients {
-		agent_runtime.DispatchV2Event(uuid, v2.MethodAgentExec, v2.ExecParams{TaskID: taskId, Command: params.Command})
-	}
+
 	actor, ip := auditActor(ctx)
 	auditlog.Log(ip, actor, "REC, task id: "+taskId, "warn")
 	if len(offlineClients) > 0 {

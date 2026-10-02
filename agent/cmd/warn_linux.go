@@ -36,7 +36,7 @@ func startSecurityWarning(ctx context.Context) func() {
 		return func() {}
 	}
 	removeLegacyUpdateMOTDWarning(legacyUpdateMOTDPath)
-	if flags.DisableWebSsh {
+	if !flags.RemoteControlEnabled() {
 		if err := removeInstalledMOTDWarning(linuxMOTDPath); err != nil {
 			log.Printf("[warn] could not remove MOTD warning: %v", err)
 		}

@@ -82,6 +82,7 @@ type StartupConfigResult struct {
 // FileOperation is metadata-only. File contents travel through the dedicated
 // HTTP transfer endpoint rather than through JSON-RPC.
 type FileOperation struct {
+	Ticket    *OperationTicket       `json:"ticket,omitempty"`
 	UUID      string                 `json:"uuid"`
 	RequestID string                 `json:"request_id"`
 	Op        string                 `json:"op"`
@@ -146,4 +147,14 @@ func BindParams(raw interface{}, target interface{}) error {
 
 func BindResult(raw interface{}, target interface{}) error {
 	return BindParams(raw, target)
+}
+
+type ExecParams struct {
+	Ticket  *OperationTicket `json:"ticket,omitempty"`
+	TaskID  string           `json:"task_id"`
+	Command string           `json:"command"`
+}
+type TerminalRequestParams struct {
+	Ticket    *OperationTicket `json:"ticket,omitempty"`
+	RequestID string           `json:"request_id"`
 }

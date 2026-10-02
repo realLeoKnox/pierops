@@ -174,6 +174,7 @@ func WebSocketV2RPC(c *gin.Context) {
 	if oldConn, exists := agent_runtime.GetConnectedClients()[uuid]; exists {
 		go oldConn.Close()
 	}
+	agent_runtime.ClearControlPolicy(uuid)
 	agent_runtime.SetConnectedClients(uuid, conn)
 	agent_runtime.MarkV2Client(uuid)
 	go notifierOnline(uuid, conn.ID)
@@ -204,6 +205,9 @@ func WebSocketV2RPC(c *gin.Context) {
 			continue
 		}
 		resp := handleV2RPC(uuid, req, false)
+		if req.Method == v2.MethodAgentReport && resp.Error == nil && !pushQueuedV2Events(conn, uuid) {
+			return
+		}
 		if req.ID != nil {
 			if err := conn.WriteJSON(resp); err != nil {
 				logger.Errorf("client-api", "failed to write v2 rpc response: %v", err)

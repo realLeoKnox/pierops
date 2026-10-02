@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -99,7 +100,7 @@ func EstablishWebSocketConnection(onRestartRequired func()) {
 			}
 			nextReportAt = time.Now().Add(reportInterval)
 
-			data := v2.BuildReportPayload(monitoring.GenerateReport())
+			data := v2.BuildReportPayload(localReport())
 			err = conn.WriteMessage(websocket.TextMessage, data)
 			if err != nil {
 				log.Println("Failed to send WebSocket message:", err)
@@ -156,7 +157,7 @@ func runPostFallback(websocketEndpoint string, interval float64, onRestartRequir
 		case <-reportTicker.C:
 			reportID := fmt.Sprintf("report-%d", time.Now().UnixNano())
 			ackIDs := snapshotV2AckEventIDs()
-			resp, err := postV2Request(v2.BuildReportRequest(reportID, monitoring.GenerateReport(), ackIDs))
+			resp, err := postV2Request(v2.BuildReportRequest(reportID, localReport(), ackIDs))
 			if err != nil {
 				log.Println("Failed to POST v2 report:", err)
 				continue
@@ -366,9 +367,48 @@ func handleWebSocketMessages(conn *ws.SafeConn, done chan<- struct{}, onRestartR
 	}
 }
 
+var operationVerifier = v2.NewTicketVerifier(time.Now())
+
+func localReport() []byte {
+	raw := monitoring.GenerateReport()
+	var report map[string]json.RawMessage
+	if json.Unmarshal(raw, &report) != nil {
+		return raw
+	}
+	policy, _ := json.Marshal(v2.ControlPolicy{Version: 2, Node: flags.NodeUUID, Capabilities: flags.Capabilities()})
+	report["control_policy"] = policy
+	payload, err := json.Marshal(report)
+	if err != nil {
+		return raw
+	}
+	return payload
+}
+
 func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventID string, onRestartRequired func()) bool {
 	if !markV2EventSeen(eventID) {
 		return true
+	}
+	if v2.IsControlledMethod(method) {
+		if err := operationVerifier.Consume(flags.NodeUUID, flags.Token, method, params, time.Now()); err != nil {
+			if errors.Is(err, v2.ErrReplay) {
+				return true
+			}
+			// Report a safe failure for correlated operations without running them.
+			switch method {
+			case v2.MethodAgentExec:
+				var p v2.ExecParams
+				if v2.BindParams(params, &p) == nil && p.TaskID != "" {
+					go uploadTaskResult(p.TaskID, "Operation ticket rejected by local policy.", -1, time.Now())
+				}
+			case v2.MethodAgentFile:
+				var p v2.FileOperation
+				if v2.BindParams(params, &p) == nil && p.RequestID != "" {
+					go postFileResult(v2.FileResult{UUID: flags.NodeUUID, RequestID: p.RequestID, Error: "Operation ticket rejected by local policy."})
+				}
+			}
+			log.Print("controlled operation rejected: invalid or expired ticket")
+			return true
+		}
 	}
 	switch method {
 	case v2.MethodAgentExec:

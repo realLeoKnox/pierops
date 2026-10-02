@@ -70,20 +70,21 @@ type IPAddress struct {
 }
 
 type Report struct {
-	UUID        string            `json:"uuid,omitempty"`
-	CPU         CPUReport         `json:"cpu"`
-	Ram         RamReport         `json:"ram"`
-	Swap        RamReport         `json:"swap"`
-	Load        LoadReport        `json:"load"`
-	Disk        DiskReport        `json:"disk"`
-	Network     NetworkReport     `json:"network"`
-	Connections ConnectionsReport `json:"connections"`
-	GPU         *GPUDetailReport  `json:"gpu,omitempty"`
-	Uptime      int64             `json:"uptime"`
-	Process     int               `json:"process"`
-	Message     string            `json:"message"`
-	Method      string            `json:"method,omitempty"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	ControlPolicy *ControlPolicy    `json:"control_policy,omitempty"`
+	UUID          string            `json:"uuid,omitempty"`
+	CPU           CPUReport         `json:"cpu"`
+	Ram           RamReport         `json:"ram"`
+	Swap          RamReport         `json:"swap"`
+	Load          LoadReport        `json:"load"`
+	Disk          DiskReport        `json:"disk"`
+	Network       NetworkReport     `json:"network"`
+	Connections   ConnectionsReport `json:"connections"`
+	GPU           *GPUDetailReport  `json:"gpu,omitempty"`
+	Uptime        int64             `json:"uptime"`
+	Process       int               `json:"process"`
+	Message       string            `json:"message"`
+	Method        string            `json:"method,omitempty"`
+	UpdatedAt     time.Time         `json:"updated_at"`
 }
 
 type CPUReport struct {
@@ -160,8 +161,9 @@ type PullParams struct {
 }
 
 type ExecParams struct {
-	TaskID  string `json:"task_id"`
-	Command string `json:"command"`
+	Ticket  *OperationTicket `json:"ticket,omitempty"`
+	TaskID  string           `json:"task_id"`
+	Command string           `json:"command"`
 }
 
 type PingParams struct {
@@ -182,7 +184,8 @@ type EventParams struct {
 }
 
 type TerminalRequestParams struct {
-	RequestID string `json:"request_id"`
+	Ticket    *OperationTicket `json:"ticket,omitempty"`
+	RequestID string           `json:"request_id"`
 }
 
 type StartupConfigParams struct {
@@ -204,10 +207,11 @@ type SwitchVersionParams struct {
 // FileOperation is metadata-only. File contents travel through the dedicated
 // HTTP transfer endpoint rather than through JSON-RPC.
 type FileOperation struct {
-	UUID      string         `json:"uuid"`
-	RequestID string         `json:"request_id"`
-	Op        string         `json:"op"`
-	Args      map[string]any `json:"args,omitempty"`
+	Ticket    *OperationTicket `json:"ticket,omitempty"`
+	UUID      string           `json:"uuid"`
+	RequestID string           `json:"request_id"`
+	Op        string           `json:"op"`
+	Args      map[string]any   `json:"args,omitempty"`
 }
 
 type FileResult struct {
