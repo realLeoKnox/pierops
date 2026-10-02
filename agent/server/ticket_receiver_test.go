@@ -59,7 +59,7 @@ func TestLocalReceiverRequiresTicketBeforeFileOperation(t *testing.T) {
 		}
 	}
 	sign := func(id, path string) any {
-		p, e := v2.SignOperation(flags.NodeUUID, "owner", flags.Token, v2.MethodAgentFile, v2.FileOperation{UUID: flags.NodeUUID, RequestID: id, Op: "create", Args: map[string]any{"path": path}}, time.Now())
+		p, e := v2.SignOperation(flags.NodeUUID, operationVerifier.Epoch(), "owner", flags.Token, v2.MethodAgentFile, v2.FileOperation{UUID: flags.NodeUUID, RequestID: id, Op: "create", Args: map[string]any{"path": path}}, time.Now())
 		if e != nil {
 			t.Fatal(e)
 		}

@@ -27,7 +27,7 @@ func CanControl(node, action string) bool {
 	mu.RLock()
 	defer mu.RUnlock()
 	report := latestReport[node]
-	if report == nil || report.ControlPolicy == nil || report.ControlPolicy.Version != 2 || report.ControlPolicy.Node != node {
+	if report == nil || report.ControlPolicy == nil || report.ControlPolicy.Version != 2 || len(report.ControlPolicy.Epoch) != 32 || report.ControlPolicy.Node != node {
 		return false
 	}
 	online := connectedClients[node] != nil
@@ -79,7 +79,17 @@ func PrepareOperation(ctx context.Context, node, method string, params any) (*Pr
 	if err != nil {
 		return nil, errors.New("node unavailable")
 	}
-	signed, err := v2.SignOperation(node, access.Actor(meta), client.Token, method, params, time.Now())
+	mu.RLock()
+	report := latestReport[node]
+	epoch := ""
+	if report != nil && report.ControlPolicy != nil {
+		epoch = report.ControlPolicy.Epoch
+	}
+	mu.RUnlock()
+	if len(epoch) != 32 {
+		return nil, ErrLocalPolicy
+	}
+	signed, err := v2.SignOperation(node, epoch, access.Actor(meta), client.Token, method, params, time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -121,8 +131,15 @@ func validCurrentTicket(node, method string, params any) bool {
 	if dbcore.GetDBInstance().Select("token").Where("uuid = ?", node).First(&client).Error != nil {
 		return false
 	}
-	_, err := v2.VerifyOperation(node, client.Token, method, params, time.Now(), 0)
-	return err == nil
+	ticket, err := v2.VerifyOperation(node, client.Token, method, params, time.Now(), 0)
+	if err != nil {
+		return false
+	}
+	mu.RLock()
+	report := latestReport[node]
+	compatible := report == nil || report.ControlPolicy == nil || report.ControlPolicy.Epoch == ticket.AgentEpoch
+	mu.RUnlock()
+	return compatible
 }
 func queuedOperationState(q *v2EventQueue, event v2.Event) (allowed, discard bool) {
 	if !v2.IsControlledMethod(event.Method) {

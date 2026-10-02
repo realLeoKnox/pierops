@@ -21,11 +21,11 @@ func TestControlPolicyRefusesOlderAndWrongNode(t *testing.T) {
 	if CanControl(node, access.FileRead) {
 		t.Fatal("old Agent allowed")
 	}
-	RecordReport(v2.Report{UUID: node, UpdatedAt: time.Now(), ControlPolicy: &v2.ControlPolicy{Version: 2, Node: "wrong-node", Capabilities: []string{access.FileRead}}})
+	RecordReport(v2.Report{UUID: node, UpdatedAt: time.Now(), ControlPolicy: &v2.ControlPolicy{Epoch: "00112233445566778899aabbccddeeff", Version: 2, Node: "wrong-node", Capabilities: []string{access.FileRead}}})
 	if CanControl(node, access.FileRead) {
 		t.Fatal("wrong node allowed")
 	}
-	RecordReport(v2.Report{UUID: node, UpdatedAt: time.Now(), ControlPolicy: &v2.ControlPolicy{Version: 2, Node: node, Capabilities: []string{access.FileRead}}})
+	RecordReport(v2.Report{UUID: node, UpdatedAt: time.Now(), ControlPolicy: &v2.ControlPolicy{Epoch: "00112233445566778899aabbccddeeff", Version: 2, Node: node, Capabilities: []string{access.FileRead}}})
 	if !CanControl(node, access.FileRead) || CanControl(node, access.FileWrite) {
 		t.Fatal("local read/write capability not enforced")
 	}
@@ -51,7 +51,7 @@ func TestControlQueueRechecksRevocationAndCancellation(t *testing.T) {
 	db.Create(&grant)
 	MarkV2Client(node)
 	KeepAlivePresence(node, 1, time.Minute)
-	RecordReport(v2.Report{UUID: node, UpdatedAt: time.Now(), ControlPolicy: &v2.ControlPolicy{Version: 2, Node: node, Capabilities: []string{access.FileRead}}})
+	RecordReport(v2.Report{UUID: node, UpdatedAt: time.Now(), ControlPolicy: &v2.ControlPolicy{Epoch: "00112233445566778899aabbccddeeff", Version: 2, Node: node, Capabilities: []string{access.FileRead}}})
 	defer func() { DeleteLatestReport(node); v2EventMu.Lock(); delete(v2EventQueues, node); v2EventMu.Unlock() }()
 	ctx := rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{Principal: rpc.NewUserPrincipal("queued-user"), SessionToken: "queue-test-session"})
 	prepare := func(id string) *PreparedOperation {

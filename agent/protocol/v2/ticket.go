@@ -19,20 +19,22 @@ var ErrReplay = errors.New("operation ticket already consumed")
 // OperationTicket authenticates one exact operation. It contains no credentials
 // or raw command/file contents. The node's existing private token is the HMAC key.
 type OperationTicket struct {
-	Version   int    `json:"version"`
-	Node      string `json:"node"`
-	Method    string `json:"method"`
-	Action    string `json:"action"`
-	RequestID string `json:"request_id"`
-	Actor     string `json:"actor"`
-	Digest    string `json:"digest"`
-	Nonce     string `json:"nonce"`
-	IssuedAt  int64  `json:"issued_at"`
-	ExpiresAt int64  `json:"expires_at"`
-	Signature string `json:"signature"`
+	AgentEpoch string `json:"agent_epoch"`
+	Version    int    `json:"version"`
+	Node       string `json:"node"`
+	Method     string `json:"method"`
+	Action     string `json:"action"`
+	RequestID  string `json:"request_id"`
+	Actor      string `json:"actor"`
+	Digest     string `json:"digest"`
+	Nonce      string `json:"nonce"`
+	IssuedAt   int64  `json:"issued_at"`
+	ExpiresAt  int64  `json:"expires_at"`
+	Signature  string `json:"signature"`
 }
 
 type ControlPolicy struct {
+	Epoch        string   `json:"epoch"`
 	Version      int      `json:"version"`
 	Node         string   `json:"node"`
 	Capabilities []string `json:"capabilities"`
@@ -117,12 +119,12 @@ func digestBody(body any) (string, error) {
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:]), nil
 }
-func SignOperation(node, actor, key, method string, params any, now time.Time) (any, error) {
+func SignOperation(node, epoch, actor, key, method string, params any, now time.Time) (any, error) {
 	body, _, action, id, e := operationBody(method, params)
 	if e != nil {
 		return nil, e
 	}
-	if node == "" || actor == "" || len(key) < 12 {
+	if node == "" || len(epoch) != 32 || actor == "" || len(key) < 12 {
 		return nil, errors.New("operation ticket identity or key unavailable")
 	}
 	if p, ok := body.(FileOperation); ok && p.UUID != node {
@@ -136,7 +138,7 @@ func SignOperation(node, actor, key, method string, params any, now time.Time) (
 	if _, e = rand.Read(nonce[:]); e != nil {
 		return nil, e
 	}
-	t := &OperationTicket{Version: 1, Node: node, Method: method, Action: action, RequestID: id, Actor: actor, Digest: digest, Nonce: hex.EncodeToString(nonce[:]), IssuedAt: now.UnixMilli(), ExpiresAt: now.Add(TicketLifetime).UnixMilli()}
+	t := &OperationTicket{AgentEpoch: epoch, Version: 1, Node: node, Method: method, Action: action, RequestID: id, Actor: actor, Digest: digest, Nonce: hex.EncodeToString(nonce[:]), IssuedAt: now.UnixMilli(), ExpiresAt: now.Add(TicketLifetime).UnixMilli()}
 	t.Signature, e = signTicket(*t, key)
 	if e != nil {
 		return nil, e
@@ -169,7 +171,7 @@ func VerifyOperation(node, key, method string, params any, now time.Time, minIss
 	if e != nil {
 		return nil, e
 	}
-	if t == nil || t.Version != 1 || t.Node != node || t.Method != method || t.Action != action || t.RequestID != id || t.Actor == "" || len(t.Nonce) != 32 || len(key) < 12 {
+	if t == nil || len(t.AgentEpoch) != 32 || t.Version != 1 || t.Node != node || t.Method != method || t.Action != action || t.RequestID != id || t.Actor == "" || len(t.Nonce) != 32 || len(key) < 12 {
 		return nil, errors.New("invalid operation ticket")
 	}
 	if p, ok := body.(FileOperation); ok && p.UUID != node {
@@ -191,20 +193,30 @@ func VerifyOperation(node, key, method string, params any, now time.Time, minIss
 
 // TicketVerifier serializes consumption across WS/pull deliveries. Expired
 // entries are pruned; unexpired entries are never evicted to make space.
-// Tickets minted before this process started are rejected after a restart.
+// A random process epoch rejects tickets from previous runs, even if the
+// system clock moves backwards. The startup time check is an additional bound.
 type TicketVerifier struct {
 	mu        sync.Mutex
 	seen      map[string]int64
 	startedAt int64
+	epoch     string
 }
 
 func NewTicketVerifier(start time.Time) *TicketVerifier {
-	return &TicketVerifier{seen: make(map[string]int64), startedAt: start.UnixMilli()}
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		panic("cannot initialize operation epoch")
+	}
+	return &TicketVerifier{epoch: hex.EncodeToString(random[:]), seen: make(map[string]int64), startedAt: start.UnixMilli()}
 }
+func (v *TicketVerifier) Epoch() string { return v.epoch }
 func (v *TicketVerifier) Consume(node, key, method string, params any, now time.Time) error {
 	t, e := VerifyOperation(node, key, method, params, now, v.startedAt)
 	if e != nil {
 		return e
+	}
+	if t.AgentEpoch != v.epoch {
+		return errors.New("operation ticket belongs to a previous Agent process")
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()

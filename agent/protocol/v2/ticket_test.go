@@ -9,11 +9,12 @@ import (
 	"time"
 )
 
+const fixtureEpoch = "00112233445566778899aabbccddeeff"
 const fixtureKey = "ticket-test-only-key-00000000"
 
 func TestTicketBindingExpiryAndRestart(t *testing.T) {
 	now := time.UnixMilli(1800000000000)
-	params, err := SignOperation("node-a", "operator-a", fixtureKey, MethodAgentFile, FileOperation{UUID: "node-a", RequestID: "request-a", Op: "download_stream", Args: map[string]any{"path": "/srv/work/example.txt", "offset": int64(0), "length": int64(5)}}, now)
+	params, err := SignOperation("node-a", fixtureEpoch, "operator-a", fixtureKey, MethodAgentFile, FileOperation{UUID: "node-a", RequestID: "request-a", Op: "download_stream", Args: map[string]any{"path": "/srv/work/example.txt", "offset": int64(0), "length": int64(5)}}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +51,7 @@ func TestTicketBindingExpiryAndRestart(t *testing.T) {
 func TestTicketConcurrentReplayAndUnsigned(t *testing.T) {
 	now := time.UnixMilli(1800000000000)
 	v := NewTicketVerifier(now.Add(-time.Second))
-	p, e := SignOperation("node-a", "owner-a", fixtureKey, MethodAgentExec, ExecParams{TaskID: "task-a", Command: "printf ok"}, now)
+	p, e := SignOperation("node-a", v.Epoch(), "owner-a", fixtureKey, MethodAgentExec, ExecParams{TaskID: "task-a", Command: "printf ok"}, now)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -86,7 +87,7 @@ func TestTicketBindsAllControlledMethods(t *testing.T) {
 		{MethodAgentTerminal, TerminalRequestParams{RequestID: "terminal-a"}},
 		{MethodAgentFile, FileOperation{UUID: "node-a", RequestID: "f", Op: "mkdir", Args: map[string]any{"path": "/srv/work/a", "mode": "0755"}}},
 	} {
-		p, e := SignOperation("node-a", "actor", fixtureKey, entry.method, entry.params, now)
+		p, e := SignOperation("node-a", fixtureEpoch, "actor", fixtureKey, entry.method, entry.params, now)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -94,7 +95,23 @@ func TestTicketBindsAllControlledMethods(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	if _, e := SignOperation("node-a", "actor", fixtureKey, MethodAgentFile, FileOperation{UUID: "node-a", RequestID: "f", Op: "chown"}, now); e == nil {
+	if _, e := SignOperation("node-a", fixtureEpoch, "actor", fixtureKey, MethodAgentFile, FileOperation{UUID: "node-a", RequestID: "f", Op: "chown"}, now); e == nil {
 		t.Fatal("disabled action signed")
+	}
+}
+
+func TestTicketRestartWithClockRewind(t *testing.T) {
+	now := time.UnixMilli(1800000000000)
+	original := NewTicketVerifier(now.Add(-time.Second))
+	p, err := SignOperation("node-a", original.Epoch(), "actor", fixtureKey, MethodAgentExec, ExecParams{TaskID: "task", Command: "printf ok"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := original.Consume("node-a", fixtureKey, MethodAgentExec, p, now); err != nil {
+		t.Fatal(err)
+	}
+	restarted := NewTicketVerifier(now.Add(-2 * time.Second))
+	if err := restarted.Consume("node-a", fixtureKey, MethodAgentExec, p, now); err == nil {
+		t.Fatal("old epoch replayed after clock rewind")
 	}
 }

@@ -375,7 +375,7 @@ func localReport() []byte {
 	if json.Unmarshal(raw, &report) != nil {
 		return raw
 	}
-	policy, _ := json.Marshal(v2.ControlPolicy{Version: 2, Node: flags.NodeUUID, Capabilities: flags.Capabilities()})
+	policy, _ := json.Marshal(v2.ControlPolicy{Epoch: operationVerifier.Epoch(), Version: 2, Node: flags.NodeUUID, Capabilities: flags.Capabilities()})
 	report["control_policy"] = policy
 	payload, err := json.Marshal(report)
 	if err != nil {
