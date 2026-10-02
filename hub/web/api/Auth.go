@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/komari-monitor/komari/database/accounts"
 	"github.com/komari-monitor/komari/database/clients"
+	"github.com/komari-monitor/komari/internal/access"
 	"github.com/komari-monitor/komari/internal/config"
 	"github.com/komari-monitor/komari/pkg/rpc"
 	"gorm.io/gorm"
@@ -65,6 +66,9 @@ func RequireRole(allowedRoles ...string) gin.HandlerFunc {
 			}
 		}
 		RespondError(c, http.StatusUnauthorized, "Unauthorized.")
+		if strings.HasPrefix(c.FullPath(), "/api/admin/") {
+			_ = access.Default().Audit(OperationMeta(c), access.Manage, "", "denied", "identity_required")
+		}
 		c.Abort()
 	}
 }

@@ -30,6 +30,8 @@ type ContextMeta struct {
 	ClientUUID string
 	// SessionToken 当前管理员会话的 session token（仅 admin 会话存在，用于区分当前会话等场景）
 	SessionToken string
+	// APIKeyToken is retained in memory for revalidation on WebSocket messages.
+	APIKeyToken string
 	// RemoteIP 请求来源 IP（可选）
 	RemoteIP string
 	// UserAgent 请求 UA（可选）

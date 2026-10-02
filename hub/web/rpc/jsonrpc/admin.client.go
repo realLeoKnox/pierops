@@ -5,8 +5,9 @@ import (
 
 	"github.com/komari-monitor/komari/database/auditlog"
 	"github.com/komari-monitor/komari/database/clients"
-	"github.com/komari-monitor/komari/internal/metricstore"
 	"github.com/komari-monitor/komari/database/records"
+	"github.com/komari-monitor/komari/internal/access"
+	"github.com/komari-monitor/komari/internal/metricstore"
 	"github.com/komari-monitor/komari/pkg/rpc"
 	agent_runtime "github.com/komari-monitor/komari/web/agent"
 )
@@ -138,7 +139,7 @@ func adminRemoveClient(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.
 	return nil, nil
 }
 
-func adminGetClient(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+func adminGetClient(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
 		UUID string `json:"uuid"`
 	}
@@ -150,13 +151,29 @@ func adminGetClient(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonR
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
+	if access.Default().Check(rpc.MetaFromContext(ctx), access.Manage, "") != nil {
+		result.Token = ""
+		result.Remark = ""
+	}
 	return result, nil
 }
 
-func adminListClients(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+func adminListClients(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	cls, err := clients.GetAllClientBasicInfo()
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
+	}
+	svc, meta := access.Default(), rpc.MetaFromContext(ctx)
+	if svc.Check(meta, access.Manage, "") != nil {
+		filtered := cls[:0]
+		for _, node := range cls {
+			if svc.Check(meta, access.NodeRead, node.UUID) == nil {
+				node.Token = ""
+				node.Remark = ""
+				filtered = append(filtered, node)
+			}
+		}
+		cls = filtered
 	}
 	return cls, nil
 }

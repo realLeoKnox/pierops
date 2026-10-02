@@ -16,6 +16,7 @@ agent:
 	cd agent && GOWORK=off go build -o ../bin/pierops-agent .
 
 test:
+	cd hub && GOWORK=off go test ./internal/access ./web/router -run 'TestPierOps|TestNodeAction|TestAPIKeyRotation|TestPolicyValidation|TestRPCScope|TestMissingAudit|TestLegacyOwner'
 	cd hub && GOWORK=off go test ./protocol/v2/... ./web/agent/... ./web/filemanager/...
 	cd agent && GOWORK=off go test ./server ./terminal -run 'Test(File|Create|Copy|List|Resolve|Legacy|Delete|Send|Receive|Upload|First|Commit|Cancel|RunSwitch|RunTask|BuildTask|Append|Motd)'
 

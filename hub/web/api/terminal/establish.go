@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/komari-monitor/komari/pkg/rpc"
 	"github.com/komari-monitor/komari/web/api"
 )
 
@@ -12,10 +13,9 @@ func EstablishConnection(c *gin.Context) {
 	TerminalSessionsMutex.Lock()
 	session, exists := TerminalSessions[session_id]
 	TerminalSessionsMutex.Unlock()
-	authenticatedUUID, _ := c.Get("client_uuid")
-	authenticatedString, hasAuthenticatedUUID := authenticatedUUID.(string)
+	principal := api.GetPrincipal(c)
 	if !exists || session == nil || session.Browser == nil ||
-		(hasAuthenticatedUUID && authenticatedString != "" && authenticatedString != session.UUID) {
+		principal == nil || principal.Type != rpc.PrincipalAgent || principal.ClientUUID != session.UUID {
 		c.JSON(404, gin.H{"status": "error", "error": "Session not found"})
 		return
 	}

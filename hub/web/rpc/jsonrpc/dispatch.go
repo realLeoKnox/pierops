@@ -2,7 +2,9 @@ package jsonrpc
 
 import (
 	"context"
+	"strings"
 
+	"github.com/komari-monitor/komari/internal/access"
 	"github.com/komari-monitor/komari/internal/config"
 	"github.com/komari-monitor/komari/pkg/rpc"
 )
@@ -11,9 +13,9 @@ import (
 // 这些方法返回登录页渲染所需的元信息(站点配置、版本、当前登录态占位)。
 // 不在此白名单的 public:* 方法(如 getNodesInformation)会被私有站点拦截。
 var privateSiteLoginWhitelist = map[string]bool{
-	"public:getMe":              true,
-	"public:getPublicSettings":  true,
-	"public:getVersion":         true,
+	"public:getMe":             true,
+	"public:getPublicSettings": true,
+	"public:getVersion":        true,
 }
 
 // Dispatch 是所有传输入口的统一分发点：私有站点检查 → 权限校验 → 执行方法。
@@ -49,8 +51,13 @@ func Dispatch(ctx context.Context, meta *rpc.ContextMeta, req *rpc.JsonRpcReques
 
 	// 命名空间权限校验:基于 Principal 的能力集(集合成员语义)。
 	if !rpc.CheckPrincipal(meta.Principal, req.Method) {
-
+		_ = access.Default().Audit(meta, "rpc.permission", "", "denied", "role_denied")
 		return rpc.ErrorResponse(req.ID, rpc.PermissionDenied, "Permission denied", nil)
+	}
+	if strings.HasPrefix(req.Method, "admin:") || rpc.RequiredRole(req.Method) == rpc.RoleAdmin {
+		if access.Default().AuthorizeRPC(meta, req) != nil {
+			return rpc.ErrorResponse(req.ID, rpc.PermissionDenied, "Operation not permitted", nil)
+		}
 	}
 
 	return rpc.CallWithContext(rpc.NewContextWithMeta(ctx, meta), req.ID, req.Method, req.Params)
@@ -60,6 +67,9 @@ func Dispatch(ctx context.Context, meta *rpc.ContextMeta, req *rpc.JsonRpcReques
 // group: 调用者权限分组 (guest/client/admin)；method: "namespace:method"；params: 参数。
 func OnInternalRequest(ctx context.Context, group string, method string, params interface{}) *rpc.JsonRpcResponse {
 	meta := &rpc.ContextMeta{Permission: group}
+	if group == rpc.RoleAdmin {
+		meta.Principal = &rpc.Principal{Type: rpc.PrincipalInternal, Roles: []string{rpc.RoleAdmin}}
+	}
 	req := &rpc.JsonRpcRequest{Version: rpc.RPC_VERSION, Method: method, Params: params}
 	return Dispatch(ctx, meta, req)
 }

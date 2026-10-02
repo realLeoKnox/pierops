@@ -4,10 +4,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/komari-monitor/komari/pkg/rpc"
 	"github.com/komari-monitor/komari/web/connection"
 )
 
 type TerminalSession struct {
+	AuthMeta     *rpc.ContextMeta
 	UUID         string
 	UserUUID     string
 	Browser      *connection.SafeConn

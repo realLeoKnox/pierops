@@ -1,6 +1,6 @@
 # 栈桥 · PierOps
 
-Agent 主动连接 Hub 的轻量可控运维平台。当前处于**架构基线阶段**：将 Komari Hub、Komari Agent 和 Web UI 组成一个可独立构建的项目，后续逐项加入节点权限、审计和 Docker 只读管理。
+Agent 主动连接 Hub 的轻量可控运维平台。当前已建立独立构建与 Docker 运行基线，正在推进 M1：Hub 的账户角色、节点动作授权与权限审计。
 
 ## 目录
 
@@ -59,10 +59,11 @@ PIEROPS_PORT=25785 docker compose -p pierops-test down
 AGENT_TOKEN='从 Hub 创建的节点 token' ./scripts/dev-agent.sh
 ```
 
-Agent 的上游自动更新默认关闭，避免把本项目二进制替换为原版 Agent。本地脚本还默认禁用 Web 控制能力；需要验证终端和文件流程时，显式设置 `AGENT_DISABLE_WEB_SSH=0`。需要让其他机器连接时，按部署环境设置 `PIEROPS_LISTEN` 和 `AGENT_ENDPOINT`，并使用 HTTPS/WSS。**当前还没有实现细粒度堡垒授权，不能把这个基线直接作为正式生产堡垒系统。**
+Agent 的上游自动更新默认关闭，避免把本项目二进制替换为原版 Agent。本地脚本还默认禁用 Web 控制能力；需要验证终端和文件流程时，显式设置 `AGENT_DISABLE_WEB_SSH=0`。需要让其他机器连接时，按部署环境设置 `PIEROPS_LISTEN` 和 `AGENT_ENDPOINT`，并使用 HTTPS/WSS。**Hub 授权核心已加入；Agent 本地约束、完整会话审计与真实部署验收仍在后续阶段。**
 
 ## 当前状态与下一步
 
 - 已集成上游 Hub、Agent，并提供按固定版本获取 Web UI 的构建入口及 Hub Docker 运行入口。
-- 待实现：统一授权决策、按节点能力开关与访问策略、结构化审计、Docker 只读适配器。
+- 已加入 M1 授权核心：账户角色、具体节点/动作授权、拒绝与策略变更审计。入口及边界见 [授权说明](docs/ACCESS.md)。
+- 下一阶段：Agent 本地能力与目录约束、操作票据、Docker 只读适配器、完整会话审计。
 - 开发时先阅读 [架构与边界](docs/ARCHITECTURE.md) 和 [阶段计划](docs/ROADMAP.md)。

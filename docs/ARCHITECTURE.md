@@ -41,3 +41,4 @@ Agent 主动通过 HTTPS/WSS 连接 Hub；Hub 不向节点发起入站连接。H
 
 这些目录是下一阶段的目标边界，**本次没有宣称它们已实现**。先保持已有监控功能运行，再以 Docker 只读链路验证新边界。
 
+2026-10-03 更新：`hub/internal/access` 已实现 M1 授权核心，复用在管理 REST、RPC 与终端/文件入口。结构化权限审计暂与该模块共用 `operation_audits` 表；Agent 能力、操作票据和 Docker 适配器仍待后续实现。具体行为见 [授权说明](ACCESS.md)。

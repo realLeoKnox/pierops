@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/komari-monitor/komari/database/auditlog"
+	"github.com/komari-monitor/komari/internal/access"
 	"github.com/komari-monitor/komari/web/connection"
 )
 
@@ -16,6 +17,11 @@ func ForwardTerminal(id string, browser, agent *connection.SafeConn) {
 	}
 	TerminalSessionsMutex.Lock()
 	session := TerminalSessions[id]
+	if session == nil {
+		TerminalSessionsMutex.Unlock()
+		return
+	}
+	authMeta, nodeUUID := session.AuthMeta, session.UUID
 	requesterIp, userUUID := "", ""
 	if session != nil && session.Browser == browser && session.Agent == agent {
 		requesterIp, userUUID = session.RequesterIp, session.UserUUID
@@ -27,12 +33,40 @@ func ForwardTerminal(id string, browser, agent *connection.SafeConn) {
 
 	auditlog.Log(requesterIp, userUUID, "established, terminal id:"+id, "terminal")
 	established_time := time.Now()
-	errChan := make(chan error, 1)
+	errChan := make(chan error, 3)
+	done := make(chan struct{})
+	defer close(done)
+	checkAccess := func() error {
+		if err := access.Default().Check(authMeta, access.Terminal, nodeUUID); err != nil {
+			_ = access.Default().Authorize(authMeta, access.Terminal, nodeUUID)
+			return err
+		}
+		return nil
+	}
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if err := checkAccess(); err != nil {
+					errChan <- err
+					return
+				}
+			}
+		}
+	}()
 
 	go func() {
 		for {
 			messageType, data, err := browser.ReadMessage()
 			if err != nil {
+				errChan <- err
+				return
+			}
+			if err := checkAccess(); err != nil {
 				errChan <- err
 				return
 			}

@@ -71,7 +71,7 @@ func registerAgentRoutes(r *gin.Engine) {
 	// AutoDiscovery 注册使用独立的 Authorization key 鉴权，保留 REST handler。
 	r.POST("/api/clients/register", client.RegisterClient)
 
-	tokenAuthorized := r.Group("/api/clients", api.RequireRole(api.RoleAdmin, api.RoleClient))
+	tokenAuthorized := r.Group("/api/clients", api.RequireRole(api.RoleClient))
 	{
 		// Agent 上报统一使用 v2 JSON-RPC。
 		tokenAuthorized.GET("/v2/rpc", client.WebSocketV2RPC)
@@ -85,7 +85,13 @@ func registerAgentRoutes(r *gin.Engine) {
 
 // registerAdminRoutes 管理员路由。除二进制/流类外全部经 Bind 绑定到 admin: 命名空间方法。
 func registerAdminRoutes(r *gin.Engine) {
-	g := r.Group("/api/admin", api.RequireRole(api.RoleAdmin))
+	g := r.Group("/api/admin", api.RequireRole(api.RoleAdmin), api.RequirePlatformAccess())
+	g.GET("/access/self", jsonRpc.Bind("admin:accessGetSelf"))
+	g.GET("/access/users", jsonRpc.Bind("admin:accessListUsers"))
+	g.POST("/access/users", api.RequireSensitive2FA(), jsonRpc.Bind("admin:accessCreateUser"))
+	g.GET("/access/users/:uuid", jsonRpc.Bind("admin:accessGetPolicy", jsonRpc.WithPath("uuid")))
+	g.PUT("/access/users/:uuid", api.RequireSensitive2FA(), jsonRpc.Bind("admin:accessSetPolicy", jsonRpc.WithPath("uuid")))
+	g.POST("/access/audit", jsonRpc.Bind("admin:accessGetAudit"))
 	admin.RegisterPprofRoutes(g)
 
 	// --- 二进制/流/重定向类，保留 REST handler ---

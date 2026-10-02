@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/database/accounts"
 	"github.com/komari-monitor/komari/database/dbcore"
 	"github.com/komari-monitor/komari/database/models"
+	"github.com/komari-monitor/komari/internal/access"
 	v2 "github.com/komari-monitor/komari/protocol/v2"
 	agent_runtime "github.com/komari-monitor/komari/web/agent"
 )
@@ -26,29 +26,6 @@ func GetClients(c *gin.Context) {
 	}
 	defer conn.Close()
 
-	// 初始化用户信息
-	var (
-		isLogin    = false
-		hiddenMap  = map[string]bool{}
-		session, _ = c.Cookie("session_token")
-	)
-
-	// 登录状态检查
-	_, err = accounts.GetUserBySession(session)
-	if err == nil {
-		isLogin = true
-	}
-
-	// 仅在未登录时需要 Hidden 信息做过滤
-	if !isLogin {
-		var hiddenClients []models.Client
-		db := dbcore.GetDBInstance()
-		_ = db.Select("uuid").Where("hidden = ?", true).Find(&hiddenClients).Error
-		for _, cli := range hiddenClients {
-			hiddenMap[cli.UUID] = true
-		}
-	}
-
 	// 请求
 	for {
 		var resp struct {
@@ -62,6 +39,17 @@ func GetClients(c *gin.Context) {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
 			return
+		}
+		isLogin := access.Default().Check(OperationMeta(c), access.Manage, "") == nil
+		hiddenMap := map[string]bool{}
+		if !isLogin {
+			var hiddenClients []models.Client
+			if dbcore.GetDBInstance().Select("uuid").Where("hidden = ?", true).Find(&hiddenClients).Error != nil {
+				return
+			}
+			for _, node := range hiddenClients {
+				hiddenMap[node.UUID] = true
+			}
 		}
 		message := string(data)
 

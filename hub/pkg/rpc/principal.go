@@ -16,6 +16,8 @@ const (
 	PrincipalUser
 	// PrincipalAPIKey 通过 API Key 认证的调用方
 	PrincipalAPIKey
+	// Only trusted in-process callers construct this identity.
+	PrincipalInternal
 )
 
 // Principal 调用主体,携带身份信息和能力。
@@ -103,7 +105,9 @@ func (p *Principal) HasRole(role string) bool {
 
 // PrincipalFromRole 按角色构造一个最小主体,用于内部调用(OnInternalRequest)等
 // 仅知道角色、无具体身份信息的场景。Type 按角色合理推断:
-//   guest → Anonymous, client → Agent, admin → User。
+//
+//	guest → Anonymous, client → Agent, admin → User。
+//
 // 注意:此构造不携带 UUID/token,仅用于权限判定与兜底,不应据此做审计 actor 归属。
 func PrincipalFromRole(role string) *Principal {
 	switch role {
@@ -115,4 +119,3 @@ func PrincipalFromRole(role string) *Principal {
 		return NewAnonymousPrincipal()
 	}
 }
-

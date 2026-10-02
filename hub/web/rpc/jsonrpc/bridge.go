@@ -115,7 +115,9 @@ func rpcErrorHTTPStatus(code int) int {
 	switch code {
 	case rpc.InvalidParams, rpc.InvalidRequest, rpc.ParseError:
 		return http.StatusBadRequest
-	case rpc.PermissionDenied, rpc.Unauthenticated:
+	case rpc.PermissionDenied:
+		return http.StatusForbidden
+	case rpc.Unauthenticated:
 		return http.StatusUnauthorized
 	case rpc.NotFound:
 		return http.StatusNotFound

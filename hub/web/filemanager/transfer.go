@@ -18,6 +18,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/komari-monitor/komari/database/auditlog"
+	"github.com/komari-monitor/komari/internal/access"
+	"github.com/komari-monitor/komari/pkg/rpc"
 	logger "github.com/komari-monitor/komari/utils/log"
 	"github.com/komari-monitor/komari/web/api"
 )
@@ -36,6 +38,7 @@ const (
 var ErrTooManyUploads = errors.New("too many concurrent uploads")
 
 type uploadSession struct {
+	Owner      string
 	mu         sync.Mutex
 	ID         string
 	UUID       string
@@ -48,6 +51,7 @@ type uploadSession struct {
 }
 
 type previewToken struct {
+	AuthMeta   *rpc.ContextMeta
 	ClientUUID string
 	Path       string
 	ExpiresAt  time.Time
@@ -119,6 +123,7 @@ func rememberDownloadChunkSize(clientUUID string, size int64) {
 }
 
 type persistedUploadSession struct {
+	Owner      string    `json:"owner"`
 	ID         string    `json:"id"`
 	UUID       string    `json:"uuid"`
 	Path       string    `json:"path"`
@@ -133,6 +138,9 @@ func uploadSessionPath(id string) string {
 }
 
 func Upload(c *gin.Context) {
+	if !api.AuthorizeOperation(c, access.FileWrite, c.Param("uuid")) {
+		return
+	}
 	cleanupOnce.Do(startUploadCleanup)
 
 	clientUUID := c.Param("uuid")
@@ -201,6 +209,7 @@ func initRemoteUpload(c *gin.Context, clientUUID string) {
 	}
 	session.mu.Lock()
 	session.ChunkSize = chunkSize
+	session.Owner = access.Actor(api.OperationMeta(c))
 	saveUploadSession(session)
 	session.mu.Unlock()
 	api.RespondSuccess(c, gin.H{
@@ -242,6 +251,14 @@ func uploadRemoteChunkStream(c *gin.Context, clientUUID string) {
 	if err != nil {
 		logger.Errorf("file-transfer", "upload chunk session lookup failed client=%s upload_id=%q: %v", clientUUID, uploadID, err)
 		respondTransferError(c, err)
+		return
+	}
+	session.mu.Lock()
+	owned := session.Owner != "" && session.Owner == access.Actor(api.OperationMeta(c))
+	session.mu.Unlock()
+	if !owned {
+		_ = access.Default().Audit(api.OperationMeta(c), access.FileWrite, clientUUID, "denied", "upload_owner_mismatch")
+		api.RespondError(c, http.StatusForbidden, "Operation not permitted")
 		return
 	}
 	session.mu.Lock()
@@ -395,6 +412,14 @@ func mergeRemoteUpload(c *gin.Context, clientUUID string) {
 		return
 	}
 	session.mu.Lock()
+	owned := session.Owner != "" && session.Owner == access.Actor(api.OperationMeta(c))
+	session.mu.Unlock()
+	if !owned {
+		_ = access.Default().Audit(api.OperationMeta(c), access.FileWrite, clientUUID, "denied", "upload_owner_mismatch")
+		api.RespondError(c, http.StatusForbidden, "Operation not permitted")
+		return
+	}
+	session.mu.Lock()
 	defer session.mu.Unlock()
 	chunkSize := session.ChunkSize
 	if chunkSize <= 0 {
@@ -462,6 +487,14 @@ func cancelUpload(c *gin.Context, clientUUID string) {
 		respondTransferError(c, err)
 		return
 	}
+	session.mu.Lock()
+	owned := session.Owner != "" && session.Owner == access.Actor(api.OperationMeta(c))
+	session.mu.Unlock()
+	if !owned {
+		_ = access.Default().Audit(api.OperationMeta(c), access.FileWrite, clientUUID, "denied", "upload_owner_mismatch")
+		api.RespondError(c, http.StatusForbidden, "Operation not permitted")
+		return
+	}
 	_, _ = Call(c.Request.Context(), clientUUID, "upload_cancel", map[string]any{
 		"upload_id": id,
 		"path":      session.Path,
@@ -473,6 +506,9 @@ func cancelUpload(c *gin.Context, clientUUID string) {
 }
 
 func Download(c *gin.Context) {
+	if !api.AuthorizeOperation(c, access.FileRead, c.Param("uuid")) {
+		return
+	}
 	clientUUID := c.Param("uuid")
 	path := strings.TrimSpace(c.Query("path"))
 	if clientUUID == "" || path == "" {
@@ -664,6 +700,9 @@ func parseSingleByteRange(value string, size int64) (int64, int64, bool) {
 }
 
 func CreatePreviewToken(c *gin.Context) {
+	if !api.AuthorizeOperation(c, access.FileRead, c.Param("uuid")) {
+		return
+	}
 	clientUUID := c.Param("uuid")
 	path := strings.TrimSpace(c.Query("path"))
 	if clientUUID == "" || path == "" {
@@ -680,6 +719,7 @@ func CreatePreviewToken(c *gin.Context) {
 		}
 	}
 	previewTokens[token] = previewToken{
+		AuthMeta:   api.OperationMeta(c),
 		ClientUUID: clientUUID,
 		Path:       path,
 		ExpiresAt:  now.Add(previewTokenTTL),
@@ -710,6 +750,10 @@ func PreviewDownload(c *gin.Context) {
 
 	if !ok {
 		api.RespondError(c, http.StatusUnauthorized, "Invalid or expired preview token")
+		return
+	}
+	if access.Default().Authorize(item.AuthMeta, access.FileRead, clientUUID) != nil {
+		api.RespondError(c, http.StatusForbidden, "Operation not permitted")
 		return
 	}
 	// The token is bound to the exact path. Keeping the path out of the public
@@ -905,6 +949,7 @@ func releaseUploadSlotLocked(session *uploadSession) {
 
 func saveUploadSession(session *uploadSession) {
 	data, err := json.Marshal(persistedUploadSession{
+		Owner:      session.Owner,
 		ID:         session.ID,
 		UUID:       session.UUID,
 		Path:       session.Path,
@@ -960,6 +1005,7 @@ func restoreUploadSession(id string) *uploadSession {
 		return nil
 	}
 	return &uploadSession{
+		Owner:      restored.Owner,
 		ID:         restored.ID,
 		UUID:       restored.UUID,
 		Path:       restored.Path,

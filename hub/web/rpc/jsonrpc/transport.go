@@ -162,6 +162,8 @@ func buildContextMeta(c *gin.Context) *rpc.ContextMeta {
 
 	// 根据主体类型填充具体字段。
 	switch p.Type {
+	case rpc.PrincipalAPIKey:
+		meta.APIKeyToken = c.GetHeader("Authorization")[len("Bearer "):]
 	case rpc.PrincipalUser:
 		meta.UserUUID = p.UserUUID
 		if session, err := c.Cookie("session_token"); err == nil && session != "" {

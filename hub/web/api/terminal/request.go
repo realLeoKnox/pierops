@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/komari-monitor/komari/database/clients"
+	"github.com/komari-monitor/komari/internal/access"
 	v2 "github.com/komari-monitor/komari/protocol/v2"
 	"github.com/komari-monitor/komari/utils"
 	logger "github.com/komari-monitor/komari/utils/log"
@@ -19,6 +20,9 @@ func dispatchTerminalRequest(uuid, id string) bool {
 
 func RequestTerminal(c *gin.Context) {
 	uuid := c.Param("uuid")
+	if !api.AuthorizeOperation(c, access.Terminal, uuid) {
+		return
+	}
 	userUUID, _ := c.Get("uuid")
 	userID, _ := userUUID.(string)
 	_, isAPIKey := c.Get("api_key")
@@ -67,6 +71,9 @@ func RequestTerminal(c *gin.Context) {
 			conn.Close()
 			return
 		}
+		TerminalSessionsMutex.Lock()
+		session.AuthMeta = api.OperationMeta(c)
+		TerminalSessionsMutex.Unlock()
 		conn.SetCloseHandler(func(code int, text string) error {
 			logger.InfoArgs("terminal", "Terminal browser connection closed:", code, text)
 			suspendSession(id, conn, nil)
@@ -88,6 +95,7 @@ func RequestTerminal(c *gin.Context) {
 	// 新建一个终端连接
 	id = utils.GenerateRandomString(32)
 	session := &TerminalSession{
+		AuthMeta:    api.OperationMeta(c),
 		UserUUID:    userID,
 		UUID:        uuid,
 		Browser:     conn,

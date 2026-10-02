@@ -4,11 +4,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/komari-monitor/komari/database/dbcore"
 	"github.com/komari-monitor/komari/database/models"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -24,6 +26,15 @@ func CheckPassword(username, passwd string) (uuid string, success bool) {
 	if result.Error != nil {
 		// 静默处理错误，不显示日志
 		return "", false
+	}
+	if user.AccessRole == "disabled" {
+		return "", false
+	}
+	if strings.HasPrefix(user.Passwd, "$2") {
+		if bcrypt.CompareHashAndPassword([]byte(user.Passwd), []byte(passwd)) != nil {
+			return "", false
+		}
+		return user.UUID, true
 	}
 	if hashPasswd(passwd) != user.Passwd {
 		return "", false

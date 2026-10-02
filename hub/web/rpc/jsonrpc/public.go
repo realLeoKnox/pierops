@@ -11,6 +11,7 @@ import (
 	"github.com/komari-monitor/komari/database/models"
 	"github.com/komari-monitor/komari/database/records"
 	"github.com/komari-monitor/komari/database/tasks"
+	"github.com/komari-monitor/komari/internal/access"
 	"github.com/komari-monitor/komari/pkg/rpc"
 	"github.com/komari-monitor/komari/utils"
 	agent_runtime "github.com/komari-monitor/komari/web/agent"
@@ -39,7 +40,7 @@ func regPublic(name string, h rpc.Handler, summary string) {
 // isLoginFromCtx 依据 meta 判断是否为已登录管理员。
 func isLoginFromCtx(ctx context.Context) bool {
 	if meta := rpc.MetaFromContext(ctx); meta != nil {
-		return meta.Principal != nil && meta.Principal.HasRole(rpc.RoleAdmin)
+		return access.Default().Check(meta, access.Manage, "") == nil
 	}
 	return false
 }
@@ -101,6 +102,7 @@ func publicGetMe(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcE
 		"sso_type":    u.SSOType,
 		"sso_id":      u.SSOID,
 		"2fa_enabled": u.TwoFactor != "",
+		"access_role": u.AccessRole,
 	}, nil
 }
 

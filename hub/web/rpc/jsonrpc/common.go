@@ -223,10 +223,9 @@ func getNodes(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcEr
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to get client info", cinfo)
 	}
-	meta := rpc.MetaFromContext(ctx)
 
 	SendIpAddrToGuest, _ := config.GetAs[bool](config.SendIpAddrToGuestKey)
-	if meta.Principal == nil || !meta.Principal.HasRole(rpc.RoleAdmin) {
+	if !isLoginFromCtx(ctx) {
 		// 过滤 Hidden 节点并隐藏敏感字段
 		filtered := make([]models.Client, 0, len(cinfo))
 		for _, node := range cinfo {
@@ -291,7 +290,6 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	}
 	req.BindParams(&params)
 
-	meta := rpc.MetaFromContext(ctx)
 	latest := agent_runtime.GetLatestReport()
 	onlineUUIDs := agent_runtime.GetAllOnlineUUIDs()
 	onlineSet := make(map[string]bool, len(onlineUUIDs))
@@ -300,7 +298,7 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	}
 
 	// Hidden 过滤
-	if meta.Principal == nil || !meta.Principal.HasRole(rpc.RoleAdmin) {
+	if !isLoginFromCtx(ctx) {
 		cinfo, err := clients.GetAllClientBasicInfo()
 		if err != nil {
 			return nil, rpc.MakeError(rpc.InternalError, "Failed to get client info", err.Error())
@@ -486,10 +484,9 @@ func getNodeRecentStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rp
 	if params.UUID == "" {
 		return nil, rpc.MakeError(rpc.InvalidParams, "UUID is required", params)
 	}
-	meta := rpc.MetaFromContext(ctx)
 	// 登录状态检查
 	isLogin := false
-	if meta.Principal != nil && meta.Principal.HasRole(rpc.RoleAdmin) {
+	if isLoginFromCtx(ctx) {
 		isLogin = true
 	}
 
