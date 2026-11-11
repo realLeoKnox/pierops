@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test, vet and repository checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # check-public inspects every reachable commit.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: hub/go.mod
+          cache-dependency-path: |
+            hub/go.sum
+            agent/go.sum
+      - name: Public repository hygiene
+        run: make check-public
+      - name: Formatting of PierOps packages
+        run: make fmt-check
+      - name: Hub and Agent ticket code are identical
+        run: make protocol-check
+      - name: Vet (Linux, plus Agent for Windows)
+        run: make vet
+      - name: Test
+        run: make test
+
+  vulnerabilities:
+    name: Known vulnerabilities (advisory)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Advisory until the inherited dependency findings recorded in
+    # docs/DEVLOG.md are resolved; then this job becomes required.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: hub/go.mod
+          cache-dependency-path: |
+            hub/go.sum
+            agent/go.sum
+      - name: govulncheck
+        run: make vuln

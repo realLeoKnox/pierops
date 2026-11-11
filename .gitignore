@@ -18,3 +18,5 @@ agent/build/
 __pycache__/
 *.pyc
 .DS_Store
+# Directories created by Hub package tests
+hub/web/*/data/

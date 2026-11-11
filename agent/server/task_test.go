@@ -18,6 +18,7 @@ var testTargets = []struct {
 }
 
 func TestICMPPing(t *testing.T) {
+	requireNetwork(t)
 	timeout := 3 * time.Second
 	for _, tt := range testTargets {
 		t.Run(tt.target, func(t *testing.T) {
@@ -33,6 +34,7 @@ func TestICMPPing(t *testing.T) {
 }
 
 func TestTCPPing(t *testing.T) {
+	requireNetwork(t)
 	timeout := 3 * time.Second
 	for _, tt := range testTargets {
 		t.Run(tt.target, func(t *testing.T) {
@@ -48,6 +50,7 @@ func TestTCPPing(t *testing.T) {
 }
 
 func TestHTTPPing(t *testing.T) {
+	requireNetwork(t)
 	timeout := 3 * time.Second
 	for _, tt := range testTargets {
 		t.Run(tt.target, func(t *testing.T) {

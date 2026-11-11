@@ -126,3 +126,30 @@
 - **关键决定：** 产物保存在忽略的 `bin/releases/`，不推送二进制或真实配置；打包要求 Agent 源码已提交。systemd 示例用于监控/只读文件，不自动安装、不改变当前机器的用户或服务。用户启用终端/写操作时需审查运行身份与目录权限。
 - **边界：** 交叉编译和归档核查不等于真实 Linux 运行；本轮未安装服务、未连接 VPS、未重建/发布 Hub 镜像。Hub Dockerfile 继续采用 Go 1.25，数据卷和无 Docker socket 的运行方式保持兼容。下一阶段为 M3 Docker 只读适配器。
 - **对应提交：** 本次提交。
+
+## 2026-11-11 · 015 · P0 接手基线：全量测试、根目录 CI 与路线调整
+
+- **目标：** Claude 接手开发（Codex 暂时退出）。让测试在 Linux 上可完整运行并由 CI 自动执行，记录接手后的阶段顺序。
+- **改动：**
+  - `Makefile`：`test` 由按名称正则挑选改为两个模块全量 `go test ./...`；新增 `stub-frontend`、`vet`、`fmt-check`、`protocol-check`、`vuln`。
+  - `hub/internal/stubfrontend`：生成仅供测试和静态检查使用的占位前端包；已有前端包时不覆盖。
+  - `agent/server/testenv_test.go` 及 `task_test.go`、`task_exec_test.go`：外网 ping 测试改为 `PIEROPS_NETWORK_TESTS=1` 时才运行；命令执行测试在 root 下跳过。
+  - `.github/workflows/ci.yml`：推送 `main` 与 PR 时运行公开仓库检查、格式、票据一致性、vet、全量测试；漏洞扫描为独立的非阻塞任务。
+  - `docs/ROADMAP.md`、`README.md`：加入 P0–P6 执行顺序和新的测试说明。
+  - `.gitignore`：忽略 Hub 包测试在 `hub/web/*/data/` 生成的目录。
+- **关键决定：**
+  - Hub 有 24 个包因 `go:embed` 需要 `defaultTheme/dist.tar.zst` 而无法在未构建前端时编译，此前的正则挑选正是绕开了它们。用占位包解决，而不是让测试依赖 Node.js 和上游前端源码；占位包位于已被 Git 与 Docker 构建忽略的目录，发布构建仍由 `scripts/build-frontend.sh` 生成真实前端。
+  - 上游有 12 个文件不符合 gofmt。为保持日后同步上游时差异可审，不重排这些文件；`fmt-check` 只覆盖 PierOps 自有的包。
+  - 双端 `ticket.go` 与其测试是有意保留的两份副本，CI 用逐字节比较防止漂移。
+  - 上游的 `hub/.github`、`agent/.github` 不在仓库根目录，GitHub 不会执行，本次未改动。
+- **验证（Linux amd64，Go 1.25.0，云端容器，root 用户）：**
+  - 修改前的全量结果：Agent `server` 包 5 项失败（3 项外网 ping；2 项命令执行因测试以 root 为执行用户被本地策略拒绝）；Hub 24 个包 setup failed（缺少嵌入的前端包）。
+  - 修改后：`make test` 两个模块全部通过；`make vet`（含 Agent 的 `GOOS=windows`）无告警；`make fmt-check`、`make protocol-check`、`make check-public` 通过。
+  - 另建普通用户运行 Agent `server` 与 `localpolicy` 测试二进制：全部通过，其中两项命令执行测试实际执行并通过（非跳过）。
+  - CI 工作流在本条记录撰写时尚未在 GitHub 上运行过，结果待推送后确认。
+- **发现但未在本步处理：**
+  - `govulncheck` 报告可达的已知漏洞：Hub 8 项，来自 `golang.org/x/net@v0.41.0`、`golang.org/x/text@v0.33.0`、`github.com/klauspost/compress@v1.17.11`；Agent 2 项，来自 `golang.org/x/net@v0.38.0`、`golang.org/x/text@v0.26.0`。依赖升级作为 P0 的下一步单独提交，完成后把 CI 的漏洞扫描改为阻塞。
+  - Hub `pkg/jsruntime` 的 `TestChildProcessPermissionAndExecution` 在一次全量并行运行中失败过一次，之后单独重复 8 次及两次全量运行均通过，原因未查明。该包计划在 P3 默认关闭。
+  - 接手评估时提到的“票据测试一行塞满”经核对不成立：仓库内的文件已经过 gofmt，可正常审阅，未做改动。
+- **边界：** 以上均为容器内验证，不是真实节点运行；root 切换到指定用户、PTY 与 systemd 行为仍属 P1 实机验收。占位前端只证明 Hub 可编译和测试，不代表真实前端已构建。
+- **对应提交：** 本次提交。

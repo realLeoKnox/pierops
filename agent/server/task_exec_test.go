@@ -13,6 +13,7 @@ func TestRunTaskCommandMultilineUnix(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix shell script execution test")
 	}
+	requireNonRootRunner(t)
 
 	result, exitCode := runTaskCommand("printf '%s\\n' first\nprintf '%s\\n' second\n")
 
@@ -28,6 +29,7 @@ func TestRunTaskCommandEscapingAndWildcardsUnix(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix shell script execution test")
 	}
+	requireNonRootRunner(t)
 
 	tempDir := t.TempDir()
 	command := strings.Join([]string{

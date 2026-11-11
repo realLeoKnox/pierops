@@ -30,7 +30,7 @@ make all
 ./scripts/dev-hub.sh
 ```
 
-`make test` 运行协议、文件、终端和任务的本地测试。Agent 上游的外部 ping 测试需要真实外网和原始 ICMP socket，不包含在此命令中。
+`make test` 运行 Hub 与 Agent 的全部测试，不需要 Node.js：尚未构建前端时会先生成一个仅供测试的占位前端包（`hub/internal/stubfrontend`，不覆盖已有的真实构建，不得用于发布）。需要真实外网和原始 ICMP socket 的 ping 测试默认跳过，设置 `PIEROPS_NETWORK_TESTS=1` 后运行；命令执行测试在 root 下跳过。`make vet`、`make fmt-check`、`make protocol-check`、`make vuln` 分别做静态检查、格式检查、双端票据代码一致性检查和已知漏洞扫描；推送和 PR 由 `.github/workflows/ci.yml` 自动执行。
 
 ## Docker 运行 Hub
 
@@ -67,7 +67,7 @@ Agent 禁止上游自动更新/远程版本替换；运维能力默认关闭，�
 - 已加入 M1 授权核心：账户角色、具体节点/动作授权、拒绝与策略变更审计。入口及边界见 [授权说明](docs/ACCESS.md)。
 - owner 登录后打开 `/api/admin/access/ui`，可创建受限账户、分配节点动作和查看授权审计。
 - 已实现 M2：Agent 能力默认关闭、文件允许目录、非 root 执行身份、单次签名票据与断线队列重新授权。
-- 下一阶段：M3 Docker 只读适配器和节点页面；之后完善会话审计与交付。
+- 2026-11-11 起的执行顺序：P0 接手基线（CI 与全量测试）→ P1 M2 实机验收 → P2 票据改 Ed25519 → P3 裁剪攻击面 → Docker 只读（原 M3）→ 审计与交付。见 [开发路线](docs/ROADMAP.md)。
 - 开发时先阅读 [架构与边界](docs/ARCHITECTURE.md) 和 [阶段计划](docs/ROADMAP.md)。
 
 Agent 本地配置与边界见 [M2 Agent 策略](docs/AGENT-POLICY.md)。
