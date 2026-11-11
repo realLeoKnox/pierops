@@ -706,6 +706,10 @@ func fsMode(value goja.Value, fallback os.FileMode) os.FileMode {
 		if err == nil {
 			return os.FileMode(mode)
 		}
+		// PierOps: Node accepts an encoding name in this position, as in
+		// writeFileSync(path, data, "utf8"). Converting it to an integer
+		// produced mode 0, leaving files unreadable to a non-root process.
+		return fallback
 	}
 	return os.FileMode(value.ToInteger())
 }
